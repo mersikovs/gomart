@@ -2,20 +2,20 @@ package main
 
 import (
 	"flag"
-	"log"
 	"os"
 
 	"github.com/mersikovs/gomart/internal/config"
+	"github.com/mersikovs/gomart/internal/logger"
 )
 
 func main() {
+	log := logger.InitLogger("development", "info")
 
 	fs := flag.NewFlagSet("agent", flag.ContinueOnError)
 	cfg, err := config.Load(fs, os.Args[1:], config.OSenv{})
 	if err != nil {
-		log.Fatal(err)
+		log.Error("ошибка получения конфиругации сервиса ", "error", err)
 	}
 
-	log.Printf("Run with config %v",
-		cfg.Safe())
+	log.Info("приложение запушенно ", "config", cfg.Safe())
 }
