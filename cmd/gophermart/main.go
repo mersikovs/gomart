@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/mersikovs/gomart/internal/config"
+	"github.com/mersikovs/gomart/internal/database"
 	"github.com/mersikovs/gomart/internal/handler"
 	"github.com/mersikovs/gomart/internal/logger"
 	"github.com/mersikovs/gomart/internal/router"
@@ -23,6 +24,13 @@ func main() {
 	if err != nil {
 		logger.Error("ошибка получения конфиругации сервиса", "error", err)
 		return
+	}
+
+	if cfg.DatabaseURI != "" {
+		if err := database.MigrateUp(cfg.DatabaseURI); err != nil {
+			logger.Error("ошибка миграции базы данных:", "error", err)
+			return
+		}
 	}
 
 	logger.Info("приложение запускается", "config", cfg.Safe())
