@@ -9,9 +9,11 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/mersikovs/gomart/internal/config/db"
+	"github.com/mersikovs/gomart/internal/model"
 )
 
 var ErrUserAlreadyExists = errors.New("user already exists")
+var ErrUserNotFound = errors.New("user not found")
 
 type PgStorage struct {
 	pool   *pgxpool.Pool
@@ -30,20 +32,26 @@ func (s *PgStorage) Ping(ctx context.Context) error {
 	return s.pool.Ping(ctx)
 }
 
-func (s *PgStorage) FindByLogin(ctx context.Context, login string) (bool, error) {
-	query := `SELECT id FROM users u WHERE login = $1`
+func (s *PgStorage) FindUserByLogin(ctx context.Context, login string) (*model.User, error) {
+	query := `SELECT id,  password, current_balance, total_spent FROM users u WHERE login = $1`
 	row := s.pool.QueryRow(ctx, query, login)
 	var id int64
+	var password string
+	var currentBalance, totalSpent int
 
-	err := row.Scan(&id)
+	err := row.Scan(&id, &password, &currentBalance, &totalSpent)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			return false, nil
+			return nil, ErrUserNotFound
 		}
-		return false, fmt.Errorf("scan metric: %w", err)
+		return nil, fmt.Errorf("error scan metric: %w", err)
 	}
 
-	return id > 0, nil
+	return &model.User{
+		ID:       id,
+		Login:    login,
+		Password: password,
+	}, nil
 }
 
 func (s *PgStorage) CreateUser(ctx context.Context, login, password string) (int64, error) {

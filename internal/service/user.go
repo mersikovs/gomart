@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"time"
 
@@ -12,9 +13,11 @@ import (
 )
 
 var ErrUserAlreadyExists = errors.New("user already exists")
+var ErrInvalidCredentials = errors.New("invalid login or password pair")
 
 type UserService interface {
 	Register(ctx context.Context, login, password string) (string, error)
+	Login(ctx context.Context, login, password string) (string, error)
 }
 
 type userService struct {
@@ -33,14 +36,13 @@ func NewUserService(repo repository.Storage, secret string, bCost int) UserServi
 }
 
 func (s *userService) Register(ctx context.Context, login, password string) (string, error) {
-
-	existing, err := s.repo.FindByLogin(ctx, login)
-	if err != nil {
-		return "", errors.New("register FindByLogin error")
-	}
-
-	if existing {
+	_, err := s.repo.FindUserByLogin(ctx, login)
+	switch {
+	case err == nil:
 		return "", ErrUserAlreadyExists
+	case errors.Is(err, repository.ErrUserNotFound):
+	default:
+		return "", fmt.Errorf("register: find user by login: %w", err)
 	}
 
 	cost := bcrypt.DefaultCost
@@ -62,6 +64,26 @@ func (s *userService) Register(ctx context.Context, login, password string) (str
 	}
 
 	token, err := s.generateJWT(userId, login)
+	if err != nil {
+		return "", err
+	}
+
+	return token, nil
+}
+
+func (s *userService) Login(ctx context.Context, login, password string) (string, error) {
+
+	user, err := s.repo.FindUserByLogin(ctx, login)
+	if err != nil {
+		return "", fmt.Errorf("register: find user by login: %w", err)
+	}
+
+	err = bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(password))
+	if err != nil {
+		return "", ErrInvalidCredentials
+	}
+
+	token, err := s.generateJWT(user.ID, login)
 	if err != nil {
 		return "", err
 	}

@@ -8,33 +8,33 @@ import (
 	"github.com/mersikovs/gomart/internal/service"
 )
 
-type RegisterRequest struct {
+type LoginRequest struct {
 	Login    string `json:"login"`
 	Password string `json:"password"`
 }
 
-func (h *Api) Register(w http.ResponseWriter, r *http.Request) {
-	var registerVars RegisterRequest
+func (h *Api) Login(w http.ResponseWriter, r *http.Request) {
+	var loginVars LoginRequest
 
-	if err := json.NewDecoder(r.Body).Decode(&registerVars); err != nil {
+	if err := json.NewDecoder(r.Body).Decode(&loginVars); err != nil {
 		http.Error(w, "Неверный формат запроса", http.StatusBadRequest)
 		return
 	}
 
-	if registerVars.Login == "" {
+	if loginVars.Login == "" {
 		http.Error(w, "Некоректные данные login", http.StatusBadRequest)
 		return
 	}
 
-	if len(registerVars.Password) < 8 {
+	if loginVars.Password == "" {
 		http.Error(w, "Некоректные данные password", http.StatusBadRequest)
 		return
 	}
 
-	token, err := h.userService.Register(r.Context(), registerVars.Login, registerVars.Password)
+	token, err := h.userService.Login(r.Context(), loginVars.Login, loginVars.Password)
 	if err != nil {
-		if errors.Is(err, service.ErrUserAlreadyExists) {
-			http.Error(w, "Пользователь уже существует", http.StatusConflict) // 409
+		if errors.Is(err, service.ErrInvalidCredentials) {
+			http.Error(w, "Неверная пара логин/пароль", http.StatusUnauthorized) // 401
 			return
 		}
 		http.Error(w, "Внутренняя ошибка сервера", http.StatusInternalServerError)

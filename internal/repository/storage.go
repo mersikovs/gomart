@@ -5,10 +5,11 @@ import (
 	"log/slog"
 
 	"github.com/mersikovs/gomart/internal/config"
+	"github.com/mersikovs/gomart/internal/model"
 )
 
 type Storage interface {
-	FindByLogin(ctx context.Context, login string) (bool, error)
+	FindUserByLogin(ctx context.Context, login string) (*model.User, error)
 	CreateUser(ctx context.Context, login, password string) (int64, error)
 }
 
