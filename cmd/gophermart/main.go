@@ -67,7 +67,7 @@ func run() int {
 		}()
 	}
 
-	h := handler.New(storage, log)
+	h := handler.New(storage, cfg.JWTSecret, cfg.BcryptCost, log)
 	router := router.Setup(h, log)
 	srv := server.New(router, cfg.RunAddress, log)
 

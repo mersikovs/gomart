@@ -5,16 +5,23 @@ import (
 	"fmt"
 	"net/url"
 	"os"
+	"strconv"
 )
 
 const accrualSystemAddress = "ACCRUAL_SYSTEM_ADDRESS"
 const databaseURI = "DATABASE_URI"
 const runAddress = "RUN_ADDRESS"
 
+const JWTSecret = "JWTSECRET"
+const BcryptCost = "BCRYPT_COST"
+
 type AppConfig struct {
 	AccrualSystemAddress string // адрес системы расчёта начислений
 	DatabaseURI          string // адрес подключения к базе данных
 	RunAddress           string // адрес и порт запуска сервиса
+
+	JWTSecret  string // секрет для подписи JWT-токенов
+	BcryptCost int    // сложность хеширования паролей (bcrypt.GenerateFromPassword)
 }
 
 type EnvSource interface {
@@ -41,6 +48,16 @@ func Load(fs *flag.FlagSet, args []string, env EnvSource) (*AppConfig, error) {
 	cfg.AccrualSystemAddress = getEnvOrArg(env, accrualSystemAddress, cfg.AccrualSystemAddress)
 	cfg.DatabaseURI = getEnvOrArg(env, databaseURI, cfg.DatabaseURI)
 	cfg.RunAddress = getEnvOrArg(env, runAddress, cfg.RunAddress)
+
+	// значения по умолчанию для автотестов
+	cfg.JWTSecret = getEnvOrArg(env, JWTSecret, "DefaultSecret")
+	bcryptCost, find := env.LookupEnv(BcryptCost)
+	if find {
+		cost, err := strconv.Atoi(bcryptCost)
+		if err == nil {
+			cfg.BcryptCost = cost
+		}
+	}
 
 	if err := cfg.validate(); err != nil {
 		return nil, fmt.Errorf("config validation failed: %w", err)

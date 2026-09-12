@@ -5,11 +5,11 @@ import (
 	"log/slog"
 
 	"github.com/mersikovs/gomart/internal/config"
-	"github.com/mersikovs/gomart/internal/model"
 )
 
 type Storage interface {
-	CreateUser(ctx context.Context, login, password string) (model.User, error)
+	FindByLogin(ctx context.Context, login string) (bool, error)
+	CreateUser(ctx context.Context, login, password string) (int64, error)
 }
 
 func NewStorage(ctx context.Context, cnf *config.AppConfig, logger *slog.Logger) (Storage, error) {
