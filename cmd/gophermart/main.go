@@ -2,7 +2,10 @@ package main
 
 import (
 	"context"
+	"errors"
 	"flag"
+	"io"
+	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
@@ -12,53 +15,104 @@ import (
 	"github.com/mersikovs/gomart/internal/database"
 	"github.com/mersikovs/gomart/internal/handler"
 	"github.com/mersikovs/gomart/internal/logger"
+	"github.com/mersikovs/gomart/internal/repository"
 	"github.com/mersikovs/gomart/internal/router"
 	"github.com/mersikovs/gomart/internal/server"
 )
 
-func main() {
-	logger := logger.InitLogger("development", "debug")
+const (
+	exitOK        = 0
+	exitConfig    = 1
+	exitMigration = 2
+	exitStorage   = 3
+	exitServer    = 4
+	exitShutdown  = 5
+)
 
-	fs := flag.NewFlagSet("agent", flag.ContinueOnError)
+func main() {
+	os.Exit(run())
+}
+
+func run() int {
+	log := logger.InitLogger("development", "debug")
+
+	fs := flag.NewFlagSet("gophermart", flag.ContinueOnError)
 	cfg, err := config.Load(fs, os.Args[1:], config.OSenv{})
 	if err != nil {
-		logger.Error("ошибка получения конфиругации сервиса", "error", err)
-		return
+		log.Error("ошибка получения конфиругации сервиса", "error", err)
+		return exitConfig
 	}
 
-	if cfg.DatabaseURI != "" {
-		if err := database.MigrateUp(cfg.DatabaseURI); err != nil {
-			logger.Error("ошибка миграции базы данных:", "error", err)
-			return
-		}
+	if err := database.MigrateUp(cfg.DatabaseURI); err != nil {
+		log.Error("ошибка миграции базы данных", "error", err)
+		return exitMigration
 	}
 
-	logger.Info("приложение запускается", "config", cfg.Safe())
+	log.Info("приложение запускается", "config", cfg.Safe())
 
-	h := handler.New(logger)
+	appCtx, appCancel := context.WithCancel(context.Background())
+	defer appCancel()
 
-	router := router.Setup(h, logger)
+	storage, err := repository.NewStorage(appCtx, cfg, log)
+	if err != nil {
+		log.Error("ошибка создания объекта хранилища", "error", err)
+		return exitStorage
+	}
 
-	srv := server.New(router, cfg.RunAddress, logger)
+	if closer, ok := storage.(io.Closer); ok {
+		defer func() {
+			if err := closer.Close(); err != nil {
+				log.Info("Ошибка закрытия хранилища %v", err)
+			}
+		}()
+	}
 
-	go func() {
-		if err := srv.Start(); err != nil && err.Error() != "http: Server closed" {
-			logger.Error("ошибка запуска сервера", "error", err)
-			return
-		}
-	}()
+	h := handler.New(storage, log)
+	router := router.Setup(h, log)
+	srv := server.New(router, cfg.RunAddress, log)
 
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
-	sig := <-quit
-	logger.Info("сигнал завершения работы", "signal", sig.String())
+	defer signal.Stop(quit)
 
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
+	errCh := make(chan error, 1)
+	go func() {
+		err := srv.Start()
+		if err != nil && !errors.Is(err, http.ErrServerClosed) {
+			errCh <- err
+			return
+		}
+		errCh <- nil
+	}()
 
-	if err := srv.Stop(ctx); err != nil {
-		logger.Error("ошибка остановки сервера", "error", err)
+	code := 0
+	var runErr error
+
+	select {
+	case err := <-errCh:
+		if err != nil {
+			log.Error("ошибка запуска сервера", "error", err)
+			code = exitServer
+			runErr = err
+		} else {
+			log.Info("сервер завершился штатно")
+		}
+	case sig := <-quit:
+		log.Info("сигнал завершения работы", "signal", sig.String())
 	}
 
-	logger.Info("приложение остановлено")
+	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer shutdownCancel()
+
+	if err := srv.Stop(shutdownCtx); err != nil {
+		log.Error("ошибка остановки сервера", "error", err)
+		if runErr == nil {
+			code = exitShutdown
+			runErr = err
+		}
+	}
+
+	log.Info("приложение остановлено")
+
+	return code
 }
