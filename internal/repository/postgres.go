@@ -14,6 +14,7 @@ import (
 
 var ErrUserAlreadyExists = errors.New("user already exists")
 var ErrUserNotFound = errors.New("user not found")
+var ErrOrderNotFound = errors.New("order not found")
 
 type PgStorage struct {
 	pool   *pgxpool.Pool
@@ -30,28 +31,6 @@ func NewPgStorage(ctx context.Context, dsn string, l *slog.Logger) (*PgStorage, 
 
 func (s *PgStorage) Ping(ctx context.Context) error {
 	return s.pool.Ping(ctx)
-}
-
-func (s *PgStorage) FindUserByLogin(ctx context.Context, login string) (*model.User, error) {
-	query := `SELECT id,  password, current_balance, total_spent FROM users u WHERE login = $1`
-	row := s.pool.QueryRow(ctx, query, login)
-	var id int64
-	var password string
-	var currentBalance, totalSpent int
-
-	err := row.Scan(&id, &password, &currentBalance, &totalSpent)
-	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			return nil, ErrUserNotFound
-		}
-		return nil, fmt.Errorf("error scan metric: %w", err)
-	}
-
-	return &model.User{
-		ID:       id,
-		Login:    login,
-		Password: password,
-	}, nil
 }
 
 func (s *PgStorage) CreateUser(ctx context.Context, login, password string) (int64, error) {
@@ -71,6 +50,113 @@ func (s *PgStorage) CreateUser(ctx context.Context, login, password string) (int
 	}
 
 	return userId, nil
+}
+
+func (s *PgStorage) CreateOrder(ctx context.Context, userId int64, orderNumber string, action model.ActionType) (*model.Order, error) {
+	query := `
+        INSERT INTO orders (user_id, number, action)
+        VALUES ($1, $2, $3)
+		RETURNING id`
+
+	var orderId int64
+	err := s.pool.QueryRow(ctx, query, userId, orderNumber, action).Scan(&orderId)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, ErrUserAlreadyExists
+		}
+		return nil, fmt.Errorf("save order %s: %w", orderNumber, err)
+	}
+
+	return &model.Order{
+		ID:     orderId,
+		UserID: userId,
+		Number: orderNumber,
+		Status: "NEW",
+		Action: action,
+	}, nil
+}
+
+func (s *PgStorage) GetOrderByNumber(ctx context.Context, orderNumber string) (*model.Order, error) {
+	query := `SELECT id, user_id, status, action, points FROM orders o WHERE number = $1`
+	row := s.pool.QueryRow(ctx, query, orderNumber)
+	var id, userId, points int64
+	var status, action string
+
+	err := row.Scan(&id, &userId, &status, &action, &points)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, ErrOrderNotFound
+		}
+		return nil, fmt.Errorf("error scan orders: %w", err)
+	}
+
+	return &model.Order{
+		ID:     id,
+		UserID: userId,
+		Status: status,
+		Action: model.ActionType(action),
+		Points: int(points),
+	}, nil
+}
+
+func (s *PgStorage) GetOrdersByUser(ctx context.Context, userId int64) ([]model.Order, error) {
+	query := `SELECT id, user_id, number, status, action, points, created_at FROM orders o WHERE user_id = $1`
+	rows, err := s.pool.Query(ctx, query, userId)
+	if err != nil {
+		return nil, fmt.Errorf("error Query GetOrdersByUser: %w", err)
+	}
+	defer rows.Close()
+
+	orders, err := pgx.CollectRows(rows, pgx.RowToStructByName[model.Order])
+
+	if err != nil {
+		return nil, fmt.Errorf("error CollectRows GetOrdersByUser: %w", err)
+	}
+
+	return orders, nil
+}
+
+func (s *PgStorage) FindUserByID(ctx context.Context, id int64) (*model.User, error) {
+	query := `SELECT id, login,  current_balance, total_spent FROM users u WHERE id = $1`
+	row := s.pool.QueryRow(ctx, query, id)
+	var login string
+	var currentBalance, totalSpent int
+
+	err := row.Scan(&id, &login, &currentBalance, &totalSpent)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, ErrUserNotFound
+		}
+		return nil, fmt.Errorf("error scan users: %w", err)
+	}
+
+	return &model.User{
+		ID:         id,
+		Login:      login,
+		Balance:    currentBalance,
+		TotalSpent: totalSpent,
+	}, nil
+}
+
+func (s *PgStorage) FindUserByLogin(ctx context.Context, login string) (*model.User, error) {
+	query := `SELECT id, password FROM users u WHERE login = $1`
+	row := s.pool.QueryRow(ctx, query, login)
+	var id int64
+	var password string
+
+	err := row.Scan(&id, &password)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, ErrUserNotFound
+		}
+		return nil, fmt.Errorf("error scan metric: %w", err)
+	}
+
+	return &model.User{
+		ID:       id,
+		Login:    login,
+		Password: password,
+	}, nil
 }
 
 func (s *PgStorage) Close() error {

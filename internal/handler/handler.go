@@ -8,14 +8,17 @@ import (
 )
 
 type Api struct {
-	logger      *slog.Logger
-	userService service.UserService
+	logger       *slog.Logger
+	JWTSecret    string
+	userService  service.UserService
+	orderService service.OrderService
 }
 
 func New(repo repository.Storage, jwtSecret string, bCost int, logger *slog.Logger) *Api {
-
 	return &Api{
-		logger:      logger,
-		userService: service.NewUserService(repo, jwtSecret, bCost),
+		logger:       logger,
+		JWTSecret:    jwtSecret,
+		userService:  service.NewUserService(repo, jwtSecret, bCost),
+		orderService: service.NewOrderService(repo, logger),
 	}
 }

@@ -9,8 +9,12 @@ import (
 )
 
 type Storage interface {
-	FindUserByLogin(ctx context.Context, login string) (*model.User, error)
 	CreateUser(ctx context.Context, login, password string) (int64, error)
+	CreateOrder(ctx context.Context, userId int64, orderNumber string, action model.ActionType) (*model.Order, error)
+	GetOrderByNumber(ctx context.Context, orderNumber string) (*model.Order, error)
+	GetOrdersByUser(ctx context.Context, id int64) ([]model.Order, error)
+	FindUserByID(ctx context.Context, id int64) (*model.User, error)
+	FindUserByLogin(ctx context.Context, login string) (*model.User, error)
 }
 
 func NewStorage(ctx context.Context, cnf *config.AppConfig, logger *slog.Logger) (Storage, error) {

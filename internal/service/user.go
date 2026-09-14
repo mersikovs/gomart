@@ -93,8 +93,8 @@ func (s *userService) Login(ctx context.Context, login, password string) (string
 
 func (s *userService) generateJWT(userID int64, username string) (string, error) {
 	claims := jwt.MapClaims{
-		"user_id":  userID,
-		"username": username,
+		"userId":   userID,
+		"userName": username,
 		"exp":      time.Now().Add(24 * time.Hour).Unix(),
 	}
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)

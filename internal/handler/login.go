@@ -37,6 +37,7 @@ func (h *Api) Login(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "Неверная пара логин/пароль", http.StatusUnauthorized) // 401
 			return
 		}
+		h.logger.Debug("ошибка login", "error", err)
 		http.Error(w, "Внутренняя ошибка сервера", http.StatusInternalServerError)
 		return
 	}
