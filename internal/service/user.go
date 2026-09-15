@@ -18,6 +18,7 @@ var ErrInvalidCredentials = errors.New("invalid login or password pair")
 type UserService interface {
 	Register(ctx context.Context, login, password string) (string, error)
 	Login(ctx context.Context, login, password string) (string, error)
+	GetBalance(ctx context.Context, userId int64) (*BalanceResponse, error)
 }
 
 type userService struct {
@@ -25,6 +26,11 @@ type userService struct {
 	jwtSecret  string
 	bcryptCost int
 	logger     *slog.Logger
+}
+
+type BalanceResponse struct {
+	CurrentBalance float64 `json:"current"`
+	TotalSpent     float64 `json:"withdrawn"`
 }
 
 func NewUserService(repo repository.Storage, secret string, bCost int) UserService {
@@ -89,6 +95,18 @@ func (s *userService) Login(ctx context.Context, login, password string) (string
 	}
 
 	return token, nil
+}
+
+func (s *userService) GetBalance(ctx context.Context, userId int64) (*BalanceResponse, error) {
+	user, err := s.repo.FindUserByID(ctx, userId)
+	if err != nil {
+		return nil, fmt.Errorf("error GetOrdersByUser: %w", err)
+	}
+
+	return &BalanceResponse{
+		CurrentBalance: float64(user.Balance),
+		TotalSpent:     float64(user.TotalSpent),
+	}, nil
 }
 
 func (s *userService) generateJWT(userID int64, username string) (string, error) {

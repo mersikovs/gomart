@@ -16,7 +16,7 @@ func Setup(h *handler.Api, logger *slog.Logger) http.Handler {
 	})
 
 	mux.Handle("GET /api/user/orders", authMW(http.HandlerFunc(h.ListOrders)))
-	mux.HandleFunc("GET /api/user/balance", h.Ping)
+	mux.Handle("GET /api/user/balance", authMW(http.HandlerFunc(h.GetBalance)))
 	mux.HandleFunc("GET /api/user/withdrawals", h.Ping)
 
 	mux.HandleFunc("POST /api/user/register", h.Register)

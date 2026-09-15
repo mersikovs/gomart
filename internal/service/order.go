@@ -22,7 +22,7 @@ var ErrOrderAlreadyProcessedByOther = errors.New("order already processed by ano
 
 type OrderService interface {
 	RegisterOrder(ctx context.Context, userId int64, orderNumber string) (OrderProcessStatus, error)
-	OrderList(ctx context.Context, userId int64) ([]OrderDTO, error)
+	OrderList(ctx context.Context, userId int64) ([]OrderResponse, error)
 }
 
 type orderService struct {
@@ -30,7 +30,7 @@ type orderService struct {
 	logger *slog.Logger
 }
 
-type OrderDTO struct {
+type OrderResponse struct {
 	Number    string  `json:"number"`
 	Status    string  `json:"status"`
 	Points    float64 `json:"accrual,omitempty"`
@@ -70,19 +70,19 @@ func (s *orderService) RegisterOrder(ctx context.Context, userId int64, orderNum
 	return status, nil
 }
 
-func (s *orderService) OrderList(ctx context.Context, userId int64) ([]OrderDTO, error) {
+func (s *orderService) OrderList(ctx context.Context, userId int64) ([]OrderResponse, error) {
 	orders, err := s.repo.GetOrdersByUser(ctx, userId)
 	if err != nil {
 		return nil, fmt.Errorf("error GetOrdersByUser: %w", err)
 	}
 
 	if len(orders) == 0 {
-		return []OrderDTO{}, nil
+		return []OrderResponse{}, nil
 	}
 
-	listOrdersDTO := make([]OrderDTO, 0)
+	listOrdersDTO := make([]OrderResponse, 0)
 	for _, o := range orders {
-		listOrdersDTO = append(listOrdersDTO, OrderDTO{
+		listOrdersDTO = append(listOrdersDTO, OrderResponse{
 			Number:    o.Number,
 			Status:    o.Status,
 			Points:    float64(o.Points),
