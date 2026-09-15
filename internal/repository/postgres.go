@@ -7,6 +7,7 @@ import (
 	"log/slog"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/mersikovs/gomart/internal/config/db"
 	"github.com/mersikovs/gomart/internal/model"
@@ -15,6 +16,7 @@ import (
 var ErrUserAlreadyExists = errors.New("user already exists")
 var ErrUserNotFound = errors.New("user not found")
 var ErrOrderNotFound = errors.New("order not found")
+var ErrInsufficientFunds = errors.New("insufficient funds")
 
 type PgStorage struct {
 	pool   *pgxpool.Pool
@@ -52,14 +54,14 @@ func (s *PgStorage) CreateUser(ctx context.Context, login, password string) (int
 	return userId, nil
 }
 
-func (s *PgStorage) CreateOrder(ctx context.Context, userId int64, orderNumber string, action model.ActionType) (*model.Order, error) {
+func (s *PgStorage) CreateOrder(ctx context.Context, userId int64, orderNumber string) (*model.Order, error) {
 	query := `
         INSERT INTO orders (user_id, number, action)
         VALUES ($1, $2, $3)
 		RETURNING id`
 
 	var orderId int64
-	err := s.pool.QueryRow(ctx, query, userId, orderNumber, action).Scan(&orderId)
+	err := s.pool.QueryRow(ctx, query, userId, orderNumber, model.ActionEarn).Scan(&orderId)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, ErrUserAlreadyExists
@@ -72,7 +74,54 @@ func (s *PgStorage) CreateOrder(ctx context.Context, userId int64, orderNumber s
 		UserID: userId,
 		Number: orderNumber,
 		Status: "NEW",
-		Action: action,
+		Action: model.ActionEarn,
+	}, nil
+}
+
+func (s *PgStorage) CreateWithdraw(ctx context.Context, userId int64, orderNumber string, sum int) (*model.Order, error) {
+	query := `
+        INSERT INTO orders (user_id, number, action, points)
+        VALUES ($1, $2, $3, $4)
+		RETURNING id`
+
+	var orderId int64
+
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("ошибка начала транзакции CreateWithdraw: %w", err)
+	}
+	defer tx.Rollback(ctx)
+
+	queryDeduct := "UPDATE users SET current_balance = current_balance - $1, total_spent = total_spent + $1  WHERE id = $2"
+	_, err = tx.Exec(ctx, queryDeduct, sum, userId)
+	if err != nil {
+		var pgErr *pgconn.PgError
+		if errors.As(err, &pgErr) {
+			if pgErr.Code == "23514" || pgErr.Code == "22003" {
+				return nil, ErrInsufficientFunds
+			}
+		}
+
+		return nil, fmt.Errorf("ошибка списания средств: %w", err)
+	}
+
+	err = tx.QueryRow(ctx, query, userId, orderNumber, model.ActionSpend, sum).Scan(&orderId)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, ErrUserAlreadyExists
+		}
+		return nil, fmt.Errorf("save order %s: %w", orderNumber, err)
+	}
+
+	tx.Commit(ctx)
+
+	return &model.Order{
+		ID:     orderId,
+		UserID: userId,
+		Number: orderNumber,
+		Status: "PROCESSED",
+		Action: model.ActionEarn,
+		Points: sum,
 	}, nil
 }
 
@@ -99,9 +148,9 @@ func (s *PgStorage) GetOrderByNumber(ctx context.Context, orderNumber string) (*
 	}, nil
 }
 
-func (s *PgStorage) GetOrdersByUser(ctx context.Context, userId int64) ([]model.Order, error) {
-	query := `SELECT id, user_id, number, status, action, points, created_at FROM orders o WHERE user_id = $1`
-	rows, err := s.pool.Query(ctx, query, userId)
+func (s *PgStorage) GetOrdersByUser(ctx context.Context, userId int64, action model.ActionType) ([]model.Order, error) {
+	query := `SELECT id, user_id, number, status, action, points, created_at FROM orders o WHERE user_id = $1 and action = $2`
+	rows, err := s.pool.Query(ctx, query, userId, action)
 	if err != nil {
 		return nil, fmt.Errorf("error Query GetOrdersByUser: %w", err)
 	}

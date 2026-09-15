@@ -2,8 +2,8 @@ CREATE TABLE users (
     id SERIAL PRIMARY KEY,
     login VARCHAR(255) UNIQUE NOT NULL,
     password VARCHAR(255) NOT NULL,
-    current_balance INT DEFAULT 0,
-    total_spent INT DEFAULT 0,
+    current_balance INT DEFAULT 0 CHECK (current_balance >= 0),
+    total_spent INT DEFAULT 0 CHECK (total_spent >= 0),
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 

@@ -19,10 +19,13 @@ const (
 )
 
 var ErrOrderAlreadyProcessedByOther = errors.New("order already processed by another user") // → 409
+var ErrWithdrawInsufficientFunds = errors.New("there are not enough funds.")                // → 402
 
 type OrderService interface {
 	RegisterOrder(ctx context.Context, userId int64, orderNumber string) (OrderProcessStatus, error)
 	OrderList(ctx context.Context, userId int64) ([]OrderResponse, error)
+	RegisterWithdraw(ctx context.Context, userId int64, orderNumber string, sum int) (OrderProcessStatus, error)
+	WithdrawList(ctx context.Context, userId int64) ([]WithdrawResponse, error)
 }
 
 type orderService struct {
@@ -35,6 +38,12 @@ type OrderResponse struct {
 	Status    string  `json:"status"`
 	Points    float64 `json:"accrual,omitempty"`
 	CreatedAt string  `json:"uploaded_at"`
+}
+
+type WithdrawResponse struct {
+	Number    string  `json:"order"`
+	Points    float64 `json:"sum,omitempty"`
+	CreatedAt string  `json:"processed_at"`
 }
 
 func NewOrderService(repo repository.Storage, log *slog.Logger) OrderService {
@@ -62,7 +71,7 @@ func (s *orderService) RegisterOrder(ctx context.Context, userId int64, orderNum
 		return status, fmt.Errorf("error GetOrderByNumber %w", err)
 	}
 
-	_, err = s.repo.CreateOrder(ctx, userId, orderNumber, model.ActionEarn)
+	_, err = s.repo.CreateOrder(ctx, userId, orderNumber)
 	if err != nil {
 		return status, fmt.Errorf("error CreateOrder: %w", err)
 	}
@@ -71,7 +80,7 @@ func (s *orderService) RegisterOrder(ctx context.Context, userId int64, orderNum
 }
 
 func (s *orderService) OrderList(ctx context.Context, userId int64) ([]OrderResponse, error) {
-	orders, err := s.repo.GetOrdersByUser(ctx, userId)
+	orders, err := s.repo.GetOrdersByUser(ctx, userId, model.ActionEarn)
 	if err != nil {
 		return nil, fmt.Errorf("error GetOrdersByUser: %w", err)
 	}
@@ -91,4 +100,55 @@ func (s *orderService) OrderList(ctx context.Context, userId int64) ([]OrderResp
 	}
 
 	return listOrdersDTO, nil
+}
+
+func (s *orderService) RegisterWithdraw(ctx context.Context, userId int64, orderNumber string, sum int) (OrderProcessStatus, error) {
+	var status OrderProcessStatus
+	status = OrderStatusAdded
+	order, err := s.repo.GetOrderByNumber(ctx, orderNumber)
+
+	if err == nil {
+		if order.UserID != userId {
+			return status, ErrOrderAlreadyProcessedByOther
+		} else {
+			status = OrderStatusAlreadyAdded
+			return status, nil
+		}
+	}
+
+	if !errors.Is(err, repository.ErrOrderNotFound) {
+		return status, fmt.Errorf("error GetOrderByNumber %w", err)
+	}
+
+	_, err = s.repo.CreateWithdraw(ctx, userId, orderNumber, sum)
+	if err != nil {
+		if errors.Is(err, repository.ErrInsufficientFunds) {
+			return status, ErrWithdrawInsufficientFunds
+		}
+		return status, fmt.Errorf("error CreateWithdraw: %w", err)
+	}
+
+	return status, nil
+}
+
+func (s *orderService) WithdrawList(ctx context.Context, userId int64) ([]WithdrawResponse, error) {
+	orders, err := s.repo.GetOrdersByUser(ctx, userId, model.ActionSpend)
+	if err != nil {
+		return nil, fmt.Errorf("error GetOrdersByUser: %w", err)
+	}
+
+	if len(orders) == 0 {
+		return []WithdrawResponse{}, nil
+	}
+
+	listWithdrawDTO := make([]WithdrawResponse, 0)
+	for _, o := range orders {
+		listWithdrawDTO = append(listWithdrawDTO, WithdrawResponse{
+			Number:    o.Number,
+			Points:    float64(o.Points),
+			CreatedAt: o.ChangedAt.Format(time.RFC3339),
+		})
+	}
+
+	return listWithdrawDTO, nil
 }
