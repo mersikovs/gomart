@@ -104,8 +104,8 @@ func (s *userService) GetBalance(ctx context.Context, userId int64) (*BalanceRes
 	}
 
 	return &BalanceResponse{
-		CurrentBalance: float64(user.Balance),
-		TotalSpent:     float64(user.TotalSpent),
+		CurrentBalance: float64(user.Balance) / 100,
+		TotalSpent:     float64(user.TotalSpent) / 100,
 	}, nil
 }
 

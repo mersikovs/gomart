@@ -92,7 +92,7 @@ func (s *PgStorage) CreateWithdraw(ctx context.Context, userId int64, orderNumbe
 	}
 	defer tx.Rollback(ctx)
 
-	queryDeduct := "UPDATE users SET current_balance = current_balance - $1, total_spent = total_spent + $1  WHERE id = $2"
+	queryDeduct := "UPDATE users SET current_balance = current_balance - $1, total_spent = total_spent + $1 WHERE id = $2"
 	_, err = tx.Exec(ctx, queryDeduct, sum, userId)
 	if err != nil {
 		var pgErr *pgconn.PgError
@@ -113,7 +113,10 @@ func (s *PgStorage) CreateWithdraw(ctx context.Context, userId int64, orderNumbe
 		return nil, fmt.Errorf("save order %s: %w", orderNumber, err)
 	}
 
-	tx.Commit(ctx)
+	err = tx.Commit(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("ошибка применения транзакции %s: %w", orderNumber, err)
+	}
 
 	return &model.Order{
 		ID:     orderId,
@@ -123,6 +126,36 @@ func (s *PgStorage) CreateWithdraw(ctx context.Context, userId int64, orderNumbe
 		Action: model.ActionEarn,
 		Points: sum,
 	}, nil
+}
+
+func (s *PgStorage) UpdateOrderStatusAndUserBalance(ctx context.Context, userId int64, orderNumber string, status string, sum int) error {
+
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return fmt.Errorf("ошибка начала транзакции UpdateOrderStatusAndUserBalance: %w", err)
+	}
+	defer tx.Rollback(ctx)
+
+	queryChangeStatus := "UPDATE orders SET status = $1, points = $2 WHERE number = $3"
+	_, err = tx.Exec(ctx, queryChangeStatus, status, sum, orderNumber)
+	if err != nil {
+		return fmt.Errorf("ошибка изменения статуса заказа: %w", err)
+	}
+
+	if sum > 0 {
+		query := `UPDATE users SET current_balance = current_balance + $1 WHERE id = $2`
+		_, err = tx.Exec(ctx, query, sum, userId)
+		if err != nil {
+			return fmt.Errorf("ошибка изменения %s: %w", orderNumber, err)
+		}
+	}
+
+	err = tx.Commit(ctx)
+	if err != nil {
+		return fmt.Errorf("ошибка применения транзакции %s: %w", orderNumber, err)
+	}
+
+	return nil
 }
 
 func (s *PgStorage) GetOrderByNumber(ctx context.Context, orderNumber string) (*model.Order, error) {
@@ -153,6 +186,23 @@ func (s *PgStorage) GetOrdersByUser(ctx context.Context, userId int64, action mo
 	rows, err := s.pool.Query(ctx, query, userId, action)
 	if err != nil {
 		return nil, fmt.Errorf("error Query GetOrdersByUser: %w", err)
+	}
+	defer rows.Close()
+
+	orders, err := pgx.CollectRows(rows, pgx.RowToStructByName[model.Order])
+
+	if err != nil {
+		return nil, fmt.Errorf("error CollectRows GetOrdersByUser: %w", err)
+	}
+
+	return orders, nil
+}
+
+func (s *PgStorage) GetOrdersByStatus(ctx context.Context, status string, action model.ActionType) ([]model.Order, error) {
+	query := `SELECT id, user_id, number, status, action, points, created_at FROM orders o WHERE status = $1 AND action = $2`
+	rows, err := s.pool.Query(ctx, query, status, action)
+	if err != nil {
+		return nil, fmt.Errorf("error Query GetOrdersByStatus: %w", err)
 	}
 	defer rows.Close()
 

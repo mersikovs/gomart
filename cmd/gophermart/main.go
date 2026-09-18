@@ -11,6 +11,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/mersikovs/gomart/internal/accrualclient"
 	"github.com/mersikovs/gomart/internal/config"
 	"github.com/mersikovs/gomart/internal/database"
 	"github.com/mersikovs/gomart/internal/handler"
@@ -18,6 +19,7 @@ import (
 	"github.com/mersikovs/gomart/internal/repository"
 	"github.com/mersikovs/gomart/internal/router"
 	"github.com/mersikovs/gomart/internal/server"
+	"github.com/mersikovs/gomart/internal/worker"
 )
 
 const (
@@ -62,12 +64,33 @@ func run() int {
 	if closer, ok := storage.(io.Closer); ok {
 		defer func() {
 			if err := closer.Close(); err != nil {
-				log.Info("Ошибка закрытия хранилища %v", err)
+				log.Info("Ошибка закрытия хранилища", "error", err)
 			}
 		}()
 	}
 
-	h := handler.New(storage, cfg.JWTSecret, cfg.BcryptCost, log)
+	accrualClient := accrualclient.NewHTTPClient(
+		cfg.AccrualSystemAddress,
+		5*time.Second,
+		1,
+	)
+
+	orderPool := worker.NewPool(
+		"order-processing",
+		5,
+		10,
+	)
+	orderPool.Start()
+
+	orderProcessor := worker.NewOrderProcessor(
+		storage,
+		accrualClient,
+		orderPool,
+		1*time.Second,
+	)
+	go orderProcessor.Run(appCtx)
+
+	h := handler.New(storage, accrualClient, cfg.JWTSecret, cfg.BcryptCost, log)
 	router := router.Setup(h, log)
 	srv := server.New(router, cfg.RunAddress, log)
 
@@ -103,7 +126,7 @@ func run() int {
 
 	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer shutdownCancel()
-
+	orderPool.Stop()
 	if err := srv.Stop(shutdownCtx); err != nil {
 		log.Error("ошибка остановки сервера", "error", err)
 		if runErr == nil {

@@ -5,8 +5,10 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"math"
 	"time"
 
+	"github.com/mersikovs/gomart/internal/accrualclient"
 	"github.com/mersikovs/gomart/internal/model"
 	"github.com/mersikovs/gomart/internal/repository"
 )
@@ -29,8 +31,9 @@ type OrderService interface {
 }
 
 type orderService struct {
-	repo   repository.Storage
-	logger *slog.Logger
+	repo    repository.Storage
+	accrual *accrualclient.DynHTTPClient
+	logger  *slog.Logger
 }
 
 type OrderResponse struct {
@@ -46,10 +49,11 @@ type WithdrawResponse struct {
 	CreatedAt string  `json:"processed_at"`
 }
 
-func NewOrderService(repo repository.Storage, log *slog.Logger) OrderService {
+func NewOrderService(repo repository.Storage, client *accrualclient.DynHTTPClient, log *slog.Logger) OrderService {
 	return &orderService{
-		repo:   repo,
-		logger: log,
+		repo:    repo,
+		accrual: client,
+		logger:  log,
 	}
 }
 
@@ -76,6 +80,29 @@ func (s *orderService) RegisterOrder(ctx context.Context, userId int64, orderNum
 		return status, fmt.Errorf("error CreateOrder: %w", err)
 	}
 
+	orderInfo, err := s.accrual.GetOrder(ctx, orderNumber)
+	if err != nil {
+		return status, nil
+	}
+
+	kopecks := int(math.Round(orderInfo.Accrual * 100))
+
+	switch orderInfo.Status {
+	case "PROCESSED":
+		err := s.repo.UpdateOrderStatusAndUserBalance(ctx, userId, orderNumber, orderInfo.Status, kopecks)
+		if err != nil {
+			return status, nil
+		}
+
+	//case "PROCESSING":
+	case "INVALID":
+		err := s.repo.UpdateOrderStatusAndUserBalance(ctx, userId, orderNumber, orderInfo.Status, 0)
+		if err != nil {
+			return status, nil
+		}
+
+	}
+
 	return status, nil
 }
 
@@ -94,7 +121,7 @@ func (s *orderService) OrderList(ctx context.Context, userId int64) ([]OrderResp
 		listOrdersDTO = append(listOrdersDTO, OrderResponse{
 			Number:    o.Number,
 			Status:    o.Status,
-			Points:    float64(o.Points),
+			Points:    float64(o.Points) / 100,
 			CreatedAt: o.ChangedAt.Format(time.RFC3339),
 		})
 	}
@@ -145,7 +172,7 @@ func (s *orderService) WithdrawList(ctx context.Context, userId int64) ([]Withdr
 	for _, o := range orders {
 		listWithdrawDTO = append(listWithdrawDTO, WithdrawResponse{
 			Number:    o.Number,
-			Points:    float64(o.Points),
+			Points:    float64(o.Points) / 100,
 			CreatedAt: o.ChangedAt.Format(time.RFC3339),
 		})
 	}
