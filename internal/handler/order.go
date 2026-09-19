@@ -5,9 +5,11 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"time"
 	"unicode"
 
 	"github.com/mersikovs/gomart/internal/middleware"
+	"github.com/mersikovs/gomart/internal/model"
 	"github.com/mersikovs/gomart/internal/service"
 )
 
@@ -58,6 +60,13 @@ func (h *Api) RegisterOrder(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(string(orderNumber))
 }
 
+type OrderResponse struct {
+	Number    string            `json:"number"`
+	Status    model.OrderStatus `json:"status"`
+	Points    float64           `json:"accrual,omitempty"`
+	CreatedAt time.Time         `json:"uploaded_at"`
+}
+
 func (h *Api) ListOrders(w http.ResponseWriter, r *http.Request) {
 	claims := middleware.GetClaimsFromContext(r.Context())
 	if claims == nil {
@@ -78,9 +87,24 @@ func (h *Api) ListOrders(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if len(list) == 0 {
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+
+	listOrdersDTO := make([]OrderResponse, 0)
+	for _, o := range list {
+		listOrdersDTO = append(listOrdersDTO, OrderResponse{
+			Number:    o.Number,
+			Status:    o.Status,
+			Points:    float64(o.Points) / 100,
+			CreatedAt: o.ChangedAt,
+		})
+	}
+
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(list)
+	json.NewEncoder(w).Encode(listOrdersDTO)
 }
 
 func luhnValid(orderNumber string) bool {

@@ -4,23 +4,34 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"math"
 	"net/http"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
 
+	"github.com/mersikovs/gomart/internal/model"
 	"golang.org/x/time/rate"
 )
 
+type accrualStatus string
+
+const (
+	accrualStatusRegistered accrualStatus = "REGISTERED"
+	accrualStatusInvalid    accrualStatus = "INVALID"
+	accrualStatusProcessing accrualStatus = "PROCESSING"
+	accrualStatusProcessed  accrualStatus = "PROCESSED"
+)
+
 type OrderResponse struct {
-	Order   string  `json:"order"`
-	Status  string  `json:"status"`
-	Accrual float64 `json:"accrual"`
+	Order   string        `json:"order"`
+	Status  accrualStatus `json:"status"`
+	Accrual float64       `json:"accrual"`
 }
 
 type AccrualClient interface {
-	GetOrder(ctx context.Context, orderNumber string) (*OrderResponse, error)
+	GetOrder(ctx context.Context, orderNumber string) (*model.Order, error)
 }
 
 type DynHTTPClient struct {
@@ -40,7 +51,7 @@ func NewHTTPClient(baseURL string, timeout time.Duration, initialRPS int) *DynHT
 	}
 }
 
-func (c *DynHTTPClient) GetOrder(ctx context.Context, orderNumber string) (*OrderResponse, error) {
+func (c *DynHTTPClient) GetOrder(ctx context.Context, orderNumber string) (*model.Order, error) {
 
 	if err := c.limiter.Wait(ctx); err != nil {
 		return nil, fmt.Errorf("rate limit wait failed: %w", err)
@@ -101,7 +112,27 @@ func (c *DynHTTPClient) GetOrder(ctx context.Context, orderNumber string) (*Orde
 		return nil, fmt.Errorf("failed to decode response: %w", err)
 	}
 
-	return &orderResp, nil
+	var internalStatus model.OrderStatus
+	switch orderResp.Status {
+	case accrualStatusRegistered:
+		internalStatus = model.OrderStatusProcessing
+	case accrualStatusProcessing:
+		internalStatus = model.OrderStatusProcessing
+	case accrualStatusInvalid:
+		internalStatus = model.OrderStatusInvalid
+	case accrualStatusProcessed:
+		internalStatus = model.OrderStatusProcessed
+	default:
+		return nil, fmt.Errorf("unknown external status: %s", orderResp.Status)
+	}
+
+	kopecks := int(math.Round(orderResp.Accrual * 100))
+
+	return &model.Order{
+		Number: orderResp.Order,
+		Status: internalStatus,
+		Points: kopecks,
+	}, nil
 }
 
 func (c *DynHTTPClient) speedUp() {
@@ -143,11 +174,7 @@ func parseRetryAfter(headerValue string) (time.Duration, error) {
 		return 0, err
 	}
 
-	waitDuration := t.Sub(time.Now().UTC())
-
-	if waitDuration < 0 {
-		waitDuration = 0
-	}
+	waitDuration := max(t.Sub(time.Now().UTC()), 0)
 	const maxServerWait = 10 * time.Minute
 	if waitDuration > maxServerWait {
 		waitDuration = maxServerWait

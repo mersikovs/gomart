@@ -95,7 +95,6 @@ func (c *AppConfig) Safe() AppConfig {
 
 func maskDSN(dsn string) string {
 	u, err := url.Parse(dsn)
-
 	if err != nil {
 		return "BIGSECRET"
 	}

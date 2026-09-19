@@ -128,7 +128,7 @@ func (s *PgStorage) CreateWithdraw(ctx context.Context, userId int64, orderNumbe
 	}, nil
 }
 
-func (s *PgStorage) UpdateOrderStatusAndUserBalance(ctx context.Context, userId int64, orderNumber string, status string, sum int) error {
+func (s *PgStorage) UpdateOrderStatusAndUserBalance(ctx context.Context, userId int64, orderNumber string, status model.OrderStatus, sum int) error {
 
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {
@@ -136,10 +136,14 @@ func (s *PgStorage) UpdateOrderStatusAndUserBalance(ctx context.Context, userId 
 	}
 	defer tx.Rollback(ctx)
 
-	queryChangeStatus := "UPDATE orders SET status = $1, points = $2 WHERE number = $3"
-	_, err = tx.Exec(ctx, queryChangeStatus, status, sum, orderNumber)
+	queryChangeStatus := "UPDATE orders SET status = $1, points = $2 WHERE number = $3 AND status IN ($4,$5)"
+	result, err := tx.Exec(ctx, queryChangeStatus, status, sum, orderNumber, model.OrderStatusProcessing, model.OrderStatusNew)
 	if err != nil {
 		return fmt.Errorf("ошибка изменения статуса заказа: %w", err)
+	}
+
+	if result.RowsAffected() == 0 {
+		return fmt.Errorf("заказ %s не найден или уже обработан", orderNumber)
 	}
 
 	if sum > 0 {
@@ -162,7 +166,8 @@ func (s *PgStorage) GetOrderByNumber(ctx context.Context, orderNumber string) (*
 	query := `SELECT id, user_id, status, action, points FROM orders o WHERE number = $1`
 	row := s.pool.QueryRow(ctx, query, orderNumber)
 	var id, userId, points int64
-	var status, action string
+	var action string
+	var status model.OrderStatus
 
 	err := row.Scan(&id, &userId, &status, &action, &points)
 	if err != nil {

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"math"
 	"net/http"
+	"time"
 
 	"github.com/mersikovs/gomart/internal/middleware"
 	"github.com/mersikovs/gomart/internal/service"
@@ -13,6 +14,12 @@ import (
 type RegisterWithdrawRequest struct {
 	Order string  `json:"order"`
 	Sum   float64 `json:"sum"`
+}
+
+type WithdrawResponse struct {
+	Number    string  `json:"order"`
+	Points    float64 `json:"sum,omitempty"`
+	CreatedAt string  `json:"processed_at"`
 }
 
 func (h *Api) RegisterWithdraw(w http.ResponseWriter, r *http.Request) {
@@ -87,14 +94,28 @@ func (h *Api) ListWithdraws(w http.ResponseWriter, r *http.Request) {
 
 	list, err := h.orderService.WithdrawList(r.Context(), int64(userID))
 	if err != nil {
-		h.logger.Debug("error OrderList", "error", err)
-		http.Error(w, "error OrderList", http.StatusInternalServerError)
+		h.logger.Debug("error WithdrawList", "error", err)
+		http.Error(w, "error WithdrawList", http.StatusInternalServerError)
 		return
+	}
+
+	if len(list) == 0 {
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+
+	listWithdrawDTO := make([]WithdrawResponse, 0)
+	for _, o := range list {
+		listWithdrawDTO = append(listWithdrawDTO, WithdrawResponse{
+			Number:    o.Number,
+			Points:    float64(o.Points) / 100,
+			CreatedAt: o.ChangedAt.Format(time.RFC3339),
+		})
 	}
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(list)
+	json.NewEncoder(w).Encode(listWithdrawDTO)
 }
 
 func getValidateSum(val float64) (float64, error) {

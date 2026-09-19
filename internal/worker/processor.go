@@ -3,8 +3,8 @@ package worker
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
-	"math"
 	"time"
 
 	"github.com/mersikovs/gomart/internal/accrualclient"
@@ -69,27 +69,14 @@ func (p *OrderProcessor) loadPendingOrders(ctx context.Context) {
 }
 
 func (p *OrderProcessor) processOrder(ctx context.Context, order model.Order) error {
-	orderInfo, err := p.accrualClient.GetOrder(ctx, order.Number)
+	accruaInfo, err := p.accrualClient.GetOrder(ctx, order.Number)
 	if err != nil {
 		return err
 	}
 
-	kopecks := int(math.Round(orderInfo.Accrual * 100))
-
-	switch orderInfo.Status {
-	case "PROCESSED":
-		err := p.repo.UpdateOrderStatusAndUserBalance(ctx, order.UserID, order.Number, orderInfo.Status, kopecks)
-		if err != nil {
-			return err
-		}
-
-	case "PROCESSING":
-	case "INVALID":
-		err := p.repo.UpdateOrderStatusAndUserBalance(ctx, order.UserID, order.Number, orderInfo.Status, 0)
-		if err != nil {
-			return err
-		}
-
+	if !order.Status.CanTransitionTo(accruaInfo.Status) {
+		return fmt.Errorf("invalid status transition from %s to %s", order.Status, accruaInfo.Status)
 	}
-	return nil
+
+	return p.repo.UpdateOrderStatusAndUserBalance(ctx, order.UserID, order.Number, accruaInfo.Status, accruaInfo.Points)
 }
