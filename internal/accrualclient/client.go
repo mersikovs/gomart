@@ -1,9 +1,11 @@
+// Package accrualclient предоставляет клиент для взаимодействия со внешней системой расчета бонусов.
 package accrualclient
 
 import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"math"
 	"net/http"
 	"strconv"
@@ -24,33 +26,47 @@ const (
 	accrualStatusProcessed  accrualStatus = "PROCESSED"
 )
 
+// OrderResponse представляет структуру JSON-ответа от внешнего API системы начислений.
 type OrderResponse struct {
-	Order   string        `json:"order"`
-	Status  accrualStatus `json:"status"`
-	Accrual float64       `json:"accrual"`
+	// Order — номер заказа во внешнем формате. Должен совпадать с запрошенным номером.
+	Order string `json:"order"`
+
+	// Status — текущий статус обработки заказа на стороне партнерской системы.
+	Status accrualStatus `json:"status"`
+
+	// Accrual — количество начисленных бонусных баллов. Может быть дробным числом.
+	Accrual float64 `json:"accrual"`
 }
 
+// AccrualClient определяет контракт для получения информации о начислениях по заказу.
 type AccrualClient interface {
+	// GetOrder запрашивает актуальный статус и сумму начисления для указанного номера заказа.
+	// Возвращает обновленную модель *model.Order или ошибку связи/парсинга.
 	GetOrder(ctx context.Context, orderNumber string) (*model.Order, error)
 }
 
+// DynHTTPClient — реализация клиента для внешней системы начислений.
 type DynHTTPClient struct {
 	baseURL    string
 	httpClient *http.Client
 	limiter    *rate.Limiter
 	mu         sync.Mutex
+	logger     *slog.Logger
 }
 
-func NewHTTPClient(baseURL string, timeout time.Duration, initialRPS int) *DynHTTPClient {
+// NewHTTPClient создает сконфигурированный экземпляр клиента для системы начислений.
+func NewHTTPClient(baseURL string, timeout time.Duration, initialRPS int, log *slog.Logger) *DynHTTPClient {
 	return &DynHTTPClient{
 		baseURL: baseURL,
 		httpClient: &http.Client{
 			Timeout: timeout,
 		},
 		limiter: rate.NewLimiter(rate.Limit(initialRPS), initialRPS),
+		logger:  log,
 	}
 }
 
+// GetOrder реализует метод интерфейса AccrualClient.
 func (c *DynHTTPClient) GetOrder(ctx context.Context, orderNumber string) (*model.Order, error) {
 
 	if err := c.limiter.Wait(ctx); err != nil {
@@ -69,7 +85,11 @@ func (c *DynHTTPClient) GetOrder(ctx context.Context, orderNumber string) (*mode
 		c.slowDown()
 		return nil, fmt.Errorf("failed to make request: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			c.logger.Error("failed to close response body", "error", err)
+		}
+	}()
 
 	switch resp.StatusCode {
 	case http.StatusOK:

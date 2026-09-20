@@ -1,3 +1,4 @@
+// Package db инкапсулирует настройку и управление пулом соединений с базой данных PostgreSQL.
 package db
 
 import (
@@ -8,6 +9,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
+// NewPool создает и настраивает пул соединений (*pgxpool.Pool) для работы с PostgreDSN.
 func NewPool(ctx context.Context, dsn string) (*pgxpool.Pool, error) {
 
 	config, err := pgxpool.ParseConfig(dsn)

@@ -4,35 +4,48 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log/slog"
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
+	"github.com/mersikovs/gomart/internal/model"
 	"github.com/mersikovs/gomart/internal/repository"
 	"golang.org/x/crypto/bcrypt"
 )
 
+// ErrUserAlreadyExists возвращается при попытке регистрации пользователя
+// с уже занятым логином или идентификатором.
 var ErrUserAlreadyExists = errors.New("user already exists")
+
+// ErrInvalidCredentials возвращается при ошибке аутентификации,
+// если переданная пара логин-пароль не найдена в системе.
 var ErrInvalidCredentials = errors.New("invalid login or password pair")
 
+// UserService определяет контракт бизнес-логики для управления пользователями и их балансами.
+// Все методы принимают context.Context для поддержки отмены операций, соблюдения таймаутов
+// и передачи JWT-токена.
 type UserService interface {
+	// Register создает нового пользователя в системе.
+	// Принимает логин и пароль. Возвращает Token JWT.
+	// В случае конфликта (попытка регистрации существующего логина) возвращает ошибку ErrUserAlreadyExists.
 	Register(ctx context.Context, login, password string) (string, error)
+
+	// Login выполняет аутентификацию пользователя по паре логин-пароль.
+	// В случае успеха возвращает токен (JWT)
+	// Если данные неверны, возвращает ошибку ErrInvalidCredentials.
 	Login(ctx context.Context, login, password string) (string, error)
-	GetBalance(ctx context.Context, userId int64) (*BalanceResponse, error)
+
+	// GetBalance запрашивает актуальное состояние счета пользователя по его внутреннему идентификатору.
+	// Возвращает структуру с деталями баланса.
+	GetBalance(ctx context.Context, userID int64) (*model.User, error)
 }
 
 type userService struct {
 	repo       repository.Storage
 	jwtSecret  string
 	bcryptCost int
-	logger     *slog.Logger
 }
 
-type BalanceResponse struct {
-	CurrentBalance float64 `json:"current"`
-	TotalSpent     float64 `json:"withdrawn"`
-}
-
+// NewUserService конструктор userService, который возвращает сконфигурированный указатель на структуру
 func NewUserService(repo repository.Storage, secret string, bCost int) UserService {
 	return &userService{
 		repo:       repo,
@@ -61,7 +74,7 @@ func (s *userService) Register(ctx context.Context, login, password string) (str
 		return "", err
 	}
 
-	userId, err := s.repo.CreateUser(ctx, login, string(hashedPassword))
+	userID, err := s.repo.CreateUser(ctx, login, string(hashedPassword))
 	if err != nil {
 		if errors.Is(err, repository.ErrUserAlreadyExists) {
 			return "", ErrUserAlreadyExists
@@ -69,7 +82,7 @@ func (s *userService) Register(ctx context.Context, login, password string) (str
 		return "", err
 	}
 
-	token, err := s.generateJWT(userId, login)
+	token, err := s.generateJWT(userID, login)
 	if err != nil {
 		return "", err
 	}
@@ -97,21 +110,18 @@ func (s *userService) Login(ctx context.Context, login, password string) (string
 	return token, nil
 }
 
-func (s *userService) GetBalance(ctx context.Context, userId int64) (*BalanceResponse, error) {
-	user, err := s.repo.FindUserByID(ctx, userId)
+func (s *userService) GetBalance(ctx context.Context, userID int64) (*model.User, error) {
+	user, err := s.repo.FindUserByID(ctx, userID)
 	if err != nil {
 		return nil, fmt.Errorf("error GetOrdersByUser: %w", err)
 	}
 
-	return &BalanceResponse{
-		CurrentBalance: float64(user.Balance) / 100,
-		TotalSpent:     float64(user.TotalSpent) / 100,
-	}, nil
+	return user, nil
 }
 
 func (s *userService) generateJWT(userID int64, username string) (string, error) {
 	claims := jwt.MapClaims{
-		"userId":   userID,
+		"userID":   userID,
 		"userName": username,
 		"exp":      time.Now().Add(24 * time.Hour).Unix(),
 	}

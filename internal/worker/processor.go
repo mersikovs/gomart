@@ -1,4 +1,3 @@
-// internal/worker/order_processor.go
 package worker
 
 import (
@@ -12,6 +11,8 @@ import (
 	"github.com/mersikovs/gomart/internal/repository"
 )
 
+// OrderProcessor обрабатывает заказы, взаимодействуя с репозиторием и системой начислений.
+// Поля структуры содержат зависимости для выполнения бизнес-логики.
 type OrderProcessor struct {
 	repo          repository.Storage
 	accrualClient accrualclient.AccrualClient
@@ -19,6 +20,8 @@ type OrderProcessor struct {
 	interval      time.Duration
 }
 
+// NewOrderProcessor создает OrderProcessor с заданными зависимостями и настройками.
+// Возвращает указатель на сконфигурированный экземпляр.
 func NewOrderProcessor(
 	repo repository.Storage,
 	client accrualclient.AccrualClient,
@@ -33,6 +36,9 @@ func NewOrderProcessor(
 	}
 }
 
+// Run запускает основной цикл обработки заказов.
+// Метод создает тикер с заданным интервалом, по сигналу которого происходит выборка ожидающих заказов (loadPendingOrders).
+// При получении сигнала отмены через ctx.Done() останавливает тикер и завершает работу горутины.
 func (p *OrderProcessor) Run(ctx context.Context) {
 	ticker := time.NewTicker(p.interval)
 	defer ticker.Stop()

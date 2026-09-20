@@ -1,3 +1,6 @@
+// Package logger инкапсулирует настройку и конфигурацию глобального логгера на базе log/slog.
+// Пакет определяет формат вывода (текстовый для разработки, JSON для production)
+// и устанавливает экземпляр slog.Logger как стандартный через slog.SetDefault().
 package logger
 
 import (
@@ -6,6 +9,7 @@ import (
 	"strings"
 )
 
+// InitLogger создает и настраивает экземпляр *slog.Logger в зависимости от окружения и уровня логирования.
 func InitLogger(env string, level string) *slog.Logger {
 	var logLevel slog.Level
 	switch strings.ToLower(level) {

@@ -7,27 +7,44 @@ import (
 	"github.com/mersikovs/gomart/internal/middleware"
 )
 
-func (h *Api) GetBalance(w http.ResponseWriter, r *http.Request) {
+// BalanceResponse определяет структуру JSON-ответа для эндпоинта баланса пользователя.
+type BalanceResponse struct {
+	// CurrentBalance — текущее количество доступных бонусных баллов на счету пользователя.
+	CurrentBalance float64 `json:"current"`
+
+	// TotalSpent — общая сумма бонусов, когда-либо списанных пользователем за все время.
+	TotalSpent float64 `json:"withdrawn"`
+}
+
+// GetBalance — HTTP-хендлер, возвращающий актуальное состояние счета.
+func (h *API) GetBalance(w http.ResponseWriter, r *http.Request) {
 	claims := middleware.GetClaimsFromContext(r.Context())
 	if claims == nil {
-		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
 		return
 	}
 
-	userID, ok := claims["userId"].(float64)
+	userID, ok := claims["userID"].(float64)
 	if !ok {
-		http.Error(w, "Invalid token claims", http.StatusUnauthorized)
+		http.Error(w, "invalid token claims", http.StatusUnauthorized)
 		return
 	}
 
-	balance, err := h.userService.GetBalance(r.Context(), int64(userID))
+	user, err := h.userService.GetBalance(r.Context(), int64(userID))
 	if err != nil {
 		h.logger.Debug("error GetBalance", "error", err)
 		http.Error(w, "error GetBalance", http.StatusInternalServerError)
 		return
 	}
 
+	balance := &BalanceResponse{
+		CurrentBalance: float64(user.Balance) / 100,
+		TotalSpent:     float64(user.TotalSpent) / 100,
+	}
+
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(balance)
+	if err := json.NewEncoder(w).Encode(balance); err != nil {
+		h.logger.Error("failed to encode balance response", "error", err, "user_id", userID)
+	}
 }

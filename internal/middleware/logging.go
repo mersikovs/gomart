@@ -13,6 +13,7 @@ type responseRecorder struct {
 	written bool
 }
 
+// WriteHeader сохраняет статус-код, если заголовки еще не были отправлены.
 func (rr *responseRecorder) WriteHeader(code int) {
 	if rr.written {
 		return
@@ -22,6 +23,8 @@ func (rr *responseRecorder) WriteHeader(code int) {
 	rr.ResponseWriter.WriteHeader(code)
 }
 
+// Write записывает тело ответа.
+// Подсчитывает количество байт.
 func (rr *responseRecorder) Write(b []byte) (int, error) {
 	if rr.status == 0 {
 		rr.WriteHeader(http.StatusOK)
@@ -31,10 +34,13 @@ func (rr *responseRecorder) Write(b []byte) (int, error) {
 	return n, err
 }
 
+// Size возвращает объем записанного тела ответа.
 func (rr *responseRecorder) Size() int {
 	return rr.size
 }
 
+// Logger — это middleware обработчик для логирования запросов.
+// Фиксирует метод, URI, время выполнения, а также статус и размер ответа от сервера.
 func Logger(log *slog.Logger) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

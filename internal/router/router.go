@@ -1,3 +1,4 @@
+// Package router настраивает HTTP-маршруты и связывает их с обработчиками.
 package router
 
 import (
@@ -8,7 +9,8 @@ import (
 	"github.com/mersikovs/gomart/internal/middleware"
 )
 
-func Setup(h *handler.Api, logger *slog.Logger) http.Handler {
+// Setup инициализирует HTTP-маршруты приложения и возвращает handler.
+func Setup(h *handler.API, logger *slog.Logger) http.Handler {
 	mux := http.NewServeMux()
 
 	authMW := middleware.Auth(middleware.AuthConfig{

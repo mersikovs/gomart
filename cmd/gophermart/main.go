@@ -1,3 +1,4 @@
+// Package main реализует исполняемый файл сервиса начисления бонусов
 package main
 
 import (
@@ -41,30 +42,30 @@ func run() int {
 	fs := flag.NewFlagSet("gophermart", flag.ContinueOnError)
 	cfg, err := config.Load(fs, os.Args[1:], config.OSenv{})
 	if err != nil {
-		log.Error("ошибка получения конфиругации сервиса", "error", err)
+		log.Error("failed to load service config", "error", err)
 		return exitConfig
 	}
 
 	if err := database.MigrateUp(cfg.DatabaseURI); err != nil {
-		log.Error("ошибка миграции базы данных", "error", err)
+		log.Error("failed to apply database migrations", "error", err)
 		return exitMigration
 	}
 
-	log.Info("приложение запускается", "config", cfg.Safe())
+	log.Info("starting application", "config", cfg.Safe())
 
 	appCtx, appCancel := context.WithCancel(context.Background())
 	defer appCancel()
 
 	storage, err := repository.NewStorage(appCtx, cfg, log)
 	if err != nil {
-		log.Error("ошибка создания объекта хранилища", "error", err)
+		log.Error("failed to initialize storage", "error", err)
 		return exitStorage
 	}
 
 	if closer, ok := storage.(io.Closer); ok {
 		defer func() {
 			if err := closer.Close(); err != nil {
-				log.Info("Ошибка закрытия хранилища", "error", err)
+				log.Info("failed to close storage", "error", err)
 			}
 		}()
 	}
@@ -73,12 +74,14 @@ func run() int {
 		cfg.AccrualSystemAddress,
 		5*time.Second,
 		1,
+		log,
 	)
 
 	orderPool := worker.NewPool(
-		"order-processing",
+		appCtx,
 		5,
 		10,
+		log,
 	)
 	orderPool.Start()
 
@@ -109,33 +112,29 @@ func run() int {
 	}()
 
 	code := 0
-	var runErr error
 
 	select {
 	case err := <-errCh:
 		if err != nil {
-			log.Error("ошибка запуска сервера", "error", err)
+			log.Error("server failed", "error", err)
 			code = exitServer
-			runErr = err
+
 		} else {
-			log.Info("сервер завершился штатно")
+			log.Info("server stopped gracefully")
 		}
 	case sig := <-quit:
-		log.Info("сигнал завершения работы", "signal", sig.String())
+		log.Info("shutdown signal received", "signal", sig.String())
 	}
 
 	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer shutdownCancel()
-	orderPool.Stop()
+	orderPool.Stop(shutdownCtx)
 	if err := srv.Stop(shutdownCtx); err != nil {
-		log.Error("ошибка остановки сервера", "error", err)
-		if runErr == nil {
-			code = exitShutdown
-			runErr = err
-		}
+		log.Error("failed to stop server", "error", err)
+		code = exitShutdown
 	}
 
-	log.Info("приложение остановлено")
+	log.Info("application stopped")
 
 	return code
 }

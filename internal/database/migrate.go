@@ -1,3 +1,4 @@
+// Package database предоставляет утилиты для управления схемой PostgreSQL через SQL-файлы.
 package database
 
 import (
@@ -6,6 +7,9 @@ import (
 	"fmt"
 
 	"github.com/golang-migrate/migrate/v4"
+	// Драйвер базы данных Postgres для golang-migrate.
+	// Регистрирует драйвер в init() через side-effect, чтобы библиотека
+	// могла распознавать URL вида "postgres://...".
 	_ "github.com/golang-migrate/migrate/v4/database/postgres"
 	"github.com/golang-migrate/migrate/v4/source/iofs"
 )
@@ -13,15 +17,16 @@ import (
 //go:embed migrations
 var migrationFS embed.FS
 
+// MigrateUp применяет все ожидающие SQL-миграции к базе данных, поднимая схему до последней версии.
 func MigrateUp(dsn string) (err error) {
 	src, err := iofs.New(migrationFS, "migrations")
 	if err != nil {
-		return fmt.Errorf("создание источника миграций: %w", err)
+		return fmt.Errorf("failed to create migration source: %w", err)
 	}
 
 	m, err := migrate.NewWithSourceInstance("iofs", src, dsn)
 	if err != nil {
-		return fmt.Errorf("создание мигратора: %w", err)
+		return fmt.Errorf("failed to create migrator: %w", err)
 	}
 
 	defer func() {
@@ -32,7 +37,7 @@ func MigrateUp(dsn string) (err error) {
 	}()
 
 	if err := m.Up(); err != nil && err != migrate.ErrNoChange {
-		return fmt.Errorf("ошибка применения миграции: %w", err)
+		return fmt.Errorf("failed to apply migrations: %w", err)
 	}
 
 	return nil

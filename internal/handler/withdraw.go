@@ -11,47 +11,62 @@ import (
 	"github.com/mersikovs/gomart/internal/service"
 )
 
+// RegisterWithdrawRequest определяет структуру тела запроса для списания бонусных баллов.
+// Валидируется при декодировании JSON из HTTP-запроса.
 type RegisterWithdrawRequest struct {
-	Order string  `json:"order"`
-	Sum   float64 `json:"sum"`
+	// Order — номер заказа который отправляет пользователь за получения скидки.
+	Order string `json:"order"`
+
+	// Sum — количество бонусных баллов к списанию.
+	Sum float64 `json:"sum"`
 }
 
+// WithdrawResponse описывает успешный ответ API на создание заявки на списание.
 type WithdrawResponse struct {
-	Number    string  `json:"order"`
-	Points    float64 `json:"sum,omitempty"`
-	CreatedAt string  `json:"processed_at"`
+	// Number — номер заказа, по которому было произведено списание.
+	Number string `json:"order"`
+
+	// Points — сумма фактически списанных баллов. Тег omitempty позволяет скрыть поле,
+	// если оно равно нулю (например, при ошибке или частичном возврате).
+	Points float64 `json:"sum,omitempty"`
+
+	// CreatedAt — временная метка UTC, когда транзакция была окончательно зарегистрированна системой.
+	CreatedAt time.Time `json:"processed_at"`
 }
 
-func (h *Api) RegisterWithdraw(w http.ResponseWriter, r *http.Request) {
+// RegisterWithdraw — HTTP-хендлер, создающий заявку на списание бонусов.
+// Ожидает тело в формате RegisterWithdrawRequest.
+// Извлекает ID авторизованного пользователя из контекста (установленного middleware Auth).
+func (h *API) RegisterWithdraw(w http.ResponseWriter, r *http.Request) {
 
 	var withdrawVars RegisterWithdrawRequest
 
 	if err := json.NewDecoder(r.Body).Decode(&withdrawVars); err != nil {
-		h.logger.Debug("registerWithdrawRequest format", "error", err)
-		http.Error(w, "Неверный формат запроса", http.StatusBadRequest)
+		h.logger.Debug("invalid withdraw request body", "error", err)
+		http.Error(w, "invalid request body", http.StatusBadRequest)
 		return
 	}
 
 	claims := middleware.GetClaimsFromContext(r.Context())
 	if claims == nil {
-		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
 		return
 	}
 
-	userID, ok := claims["userId"].(float64)
+	userID, ok := claims["userID"].(float64)
 	if !ok {
-		http.Error(w, "Invalid token claims", http.StatusUnauthorized)
+		http.Error(w, "invalid token claims", http.StatusUnauthorized)
 		return
 	}
 
 	if !luhnValid(string(withdrawVars.Order)) {
-		http.Error(w, "неверный формат номера заказа", http.StatusUnprocessableEntity)
+		http.Error(w, "invalid order number", http.StatusUnprocessableEntity)
 		return
 	}
 
 	sum, err := getValidateSum(withdrawVars.Sum)
 	if err != nil {
-		http.Error(w, "неверный формат суммы списания", http.StatusBadRequest)
+		http.Error(w, "invalid withdrawal amount", http.StatusBadRequest)
 		return
 	}
 
@@ -64,31 +79,32 @@ func (h *Api) RegisterWithdraw(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		h.logger.Debug("registerWithdraw", "error", err)
-		http.Error(w, "RegisterWithdraw error", http.StatusInternalServerError)
+		http.Error(w, "registerWithdraw error", http.StatusInternalServerError)
 		return
 	}
 
 	if orderStatus == service.OrderStatusAlreadyAdded {
 		w.WriteHeader(http.StatusOK)
-		json.NewEncoder(w).Encode(orderStatus)
 		return
 	}
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(orderStatus)
 }
 
-func (h *Api) ListWithdraws(w http.ResponseWriter, r *http.Request) {
+// ListWithdraws — HTTP-хендлер, возвращающий историю списаний бонусных баллов
+// для авторизованного пользователя.
+// Извлекает ID пользователя из контекста запроса middleware Auth и запрашивает данные через OrderService.
+func (h *API) ListWithdraws(w http.ResponseWriter, r *http.Request) {
 	claims := middleware.GetClaimsFromContext(r.Context())
 	if claims == nil {
-		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
 		return
 	}
 
-	userID, ok := claims["userId"].(float64)
+	userID, ok := claims["userID"].(float64)
 	if !ok {
-		http.Error(w, "Invalid token claims", http.StatusUnauthorized)
+		http.Error(w, "invalid token claims", http.StatusUnauthorized)
 		return
 	}
 
@@ -109,27 +125,29 @@ func (h *Api) ListWithdraws(w http.ResponseWriter, r *http.Request) {
 		listWithdrawDTO = append(listWithdrawDTO, WithdrawResponse{
 			Number:    o.Number,
 			Points:    float64(o.Points) / 100,
-			CreatedAt: o.ChangedAt.Format(time.RFC3339),
+			CreatedAt: o.CreatedAt,
 		})
 	}
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(listWithdrawDTO)
+	if err := json.NewEncoder(w).Encode(listWithdrawDTO); err != nil {
+		h.logger.Error("failed to encode withdrawals response listWithdrawDTO", "error", err, "user_id", userID)
+	}
 }
 
 func getValidateSum(val float64) (float64, error) {
 	if math.IsNaN(val) || math.IsInf(val, 0) {
-		return 0, errors.New("сумма не может быть NaN или Infinity")
+		return 0, errors.New("amount must be finite")
 	}
 
 	if val <= 0 {
-		return 0, errors.New("сумма должна быть больше нуля")
+		return 0, errors.New("amount must be positive")
 	}
 
 	multiplied := val * 100
 	if math.Abs(math.Round(multiplied)-multiplied) > 1e-9 {
-		return 0, errors.New("допустимо не более 2 знаков после запятой")
+		return 0, errors.New("amount has more than 2 decimal places")
 	}
 
 	return val, nil

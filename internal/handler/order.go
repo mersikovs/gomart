@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"slices"
 	"time"
 	"unicode"
 
@@ -13,28 +14,30 @@ import (
 	"github.com/mersikovs/gomart/internal/service"
 )
 
-func (h *Api) RegisterOrder(w http.ResponseWriter, r *http.Request) {
+// RegisterOrder — HTTP-хендлер, регистрирующий новый номер заказа для текущего пользователя.
+// Ожидает тело запроса в виде простого текста (plain/text) с номером заказа.
+func (h *API) RegisterOrder(w http.ResponseWriter, r *http.Request) {
 
 	orderNumber, err := io.ReadAll(r.Body)
 	if err != nil {
-		http.Error(w, "Failed to read order number", http.StatusBadRequest)
+		http.Error(w, "failed to read order number", http.StatusBadRequest)
 		return
 	}
 
 	claims := middleware.GetClaimsFromContext(r.Context())
 	if claims == nil {
-		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
 		return
 	}
 
-	userID, ok := claims["userId"].(float64)
+	userID, ok := claims["userID"].(float64)
 	if !ok {
-		http.Error(w, "Invalid token claims", http.StatusUnauthorized)
+		http.Error(w, "invalid token claims", http.StatusUnauthorized)
 		return
 	}
 
 	if !luhnValid(string(orderNumber)) {
-		http.Error(w, "неверный формат номера заказа", http.StatusUnprocessableEntity)
+		http.Error(w, "invalid order number", http.StatusUnprocessableEntity)
 		return
 	}
 
@@ -44,39 +47,47 @@ func (h *Api) RegisterOrder(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusConflict)
 			return
 		}
-		h.logger.Debug("registerOrder", "error", err)
-		http.Error(w, "RegisterOrder error", http.StatusInternalServerError)
+		h.logger.Debug("registerOrder error", "error", err)
+		http.Error(w, "registerOrder error", http.StatusInternalServerError)
 		return
 	}
 
 	if orderStatus == service.OrderStatusAlreadyAdded {
 		w.WriteHeader(http.StatusOK)
-		json.NewEncoder(w).Encode(string(orderNumber))
 		return
 	}
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusAccepted)
-	json.NewEncoder(w).Encode(string(orderNumber))
 }
 
+// OrderResponse определяет структуру ответа API при регистрации нового заказа.
+// Содержит номер заказа.
 type OrderResponse struct {
-	Number    string            `json:"number"`
-	Status    model.OrderStatus `json:"status"`
-	Points    float64           `json:"accrual,omitempty"`
-	CreatedAt time.Time         `json:"uploaded_at"`
+	// Number — уникальный номер заказа.
+	Number string `json:"number"`
+
+	// Status — текущее состояние обработки заказа сервером лояльности
+	Status model.OrderStatus `json:"status"`
+
+	// Points — количество начисленных бонусных баллов за заказ.
+	Points float64 `json:"accrual,omitempty"`
+
+	// CreatedAt — время UTC, когда номер заказа был загружен пользователем в систему.
+	CreatedAt time.Time `json:"uploaded_at"`
 }
 
-func (h *Api) ListOrders(w http.ResponseWriter, r *http.Request) {
+// ListOrders — HTTP-хендлер, возвращающий список всех заказов авторизованного пользователя.
+func (h *API) ListOrders(w http.ResponseWriter, r *http.Request) {
 	claims := middleware.GetClaimsFromContext(r.Context())
 	if claims == nil {
-		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
 		return
 	}
 
-	userID, ok := claims["userId"].(float64)
+	userID, ok := claims["userID"].(float64)
 	if !ok {
-		http.Error(w, "Invalid token claims", http.StatusUnauthorized)
+		http.Error(w, "invalid token claims", http.StatusUnauthorized)
 		return
 	}
 
@@ -98,13 +109,15 @@ func (h *Api) ListOrders(w http.ResponseWriter, r *http.Request) {
 			Number:    o.Number,
 			Status:    o.Status,
 			Points:    float64(o.Points) / 100,
-			CreatedAt: o.ChangedAt,
+			CreatedAt: o.CreatedAt,
 		})
 	}
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(listOrdersDTO)
+	if err := json.NewEncoder(w).Encode(listOrdersDTO); err != nil {
+		h.logger.Error("failed to encode orders response listOrdersDTO", "error", err, "user_id", userID)
+	}
 }
 
 func luhnValid(orderNumber string) bool {
@@ -123,8 +136,8 @@ func luhnValid(orderNumber string) bool {
 
 	runes := []rune(orderNumber)
 
-	for i := len(runes) - 1; i >= 0; i-- {
-		digit := int(runes[i] - '0')
+	for _, rune := range slices.Backward(runes) {
+		digit := int(rune - '0')
 		if isSecondDigit {
 			digit *= 2
 			if digit > 9 {

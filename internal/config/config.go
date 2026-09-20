@@ -1,3 +1,4 @@
+// Package config отвечает за чтение, парсинг и валидацию конфигурационных настроек приложения.
 package config
 
 import (
@@ -12,9 +13,13 @@ const accrualSystemAddress = "ACCRUAL_SYSTEM_ADDRESS"
 const databaseURI = "DATABASE_URI"
 const runAddress = "RUN_ADDRESS"
 
+// JWTSecret — имя переменной окружения, хранящей секретный ключ для подписи JWT-токенов.
 const JWTSecret = "JWTSECRET"
+
+// BcryptCost — имя переменной окружения, задающей стоимость (сложность) хеширования паролей bcrypt.
 const BcryptCost = "BCRYPT_COST"
 
+// AppConfig агрегирует все параметры запуска и подключения внешних сервисов.
 type AppConfig struct {
 	AccrualSystemAddress string // адрес системы расчёта начислений
 	DatabaseURI          string // адрес подключения к базе данных
@@ -24,16 +29,20 @@ type AppConfig struct {
 	BcryptCost int    // сложность хеширования паролей (bcrypt.GenerateFromPassword)
 }
 
+// EnvSource — интерфейс-адаптер для получения значений переменных окружения.
 type EnvSource interface {
 	LookupEnv(key string) (string, bool)
 }
 
+// OSenv — реализация EnvSource, использующая стандартный пакет os для чтения реальных переменных ОС.
 type OSenv struct{}
 
+// LookupEnv реализует интерфейс EnvSource, делегируя вызов стандартной функции os.LookupEnv.
 func (e OSenv) LookupEnv(key string) (string, bool) {
 	return os.LookupEnv(key)
 }
 
+// Load выполняет первичную инициализацию конфигурации приложения.
 func Load(fs *flag.FlagSet, args []string, env EnvSource) (*AppConfig, error) {
 	cfg := &AppConfig{}
 
@@ -85,6 +94,7 @@ func (c *AppConfig) validate() error {
 	return nil
 }
 
+// Safe создает копию текущей конфигурации, очищенную от чувствительных данных.
 func (c *AppConfig) Safe() AppConfig {
 	return AppConfig{
 		AccrualSystemAddress: c.AccrualSystemAddress,
