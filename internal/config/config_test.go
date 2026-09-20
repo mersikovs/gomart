@@ -267,7 +267,7 @@ func Test_maskDSN(t *testing.T) {
 		want string
 	}{
 		{
-			name: "Стандартный DSN с паролем",
+			name: "стандартный DSN с паролем",
 			dsn:  "postgresql://user:mypassword@localhost:5432/db?sslmode=disable",
 			want: "postgresql://user:BIGSECRET@localhost:5432/db?sslmode=disable",
 		},
@@ -277,12 +277,12 @@ func Test_maskDSN(t *testing.T) {
 			want: "postgresql://user:BIGSECRET@localhost:5432/db?sslmode=disable",
 		},
 		{
-			name: "Пароль со спецсимволами",
+			name: "пароль со спецсимволами",
 			dsn:  "postgresql://user:p@ss:w?rd@localhost:5432/db?sslmode=disable",
 			want: "BIGSECRET",
 		},
 		{
-			name: "Пустая строка",
+			name: "пустая строка",
 			dsn:  "",
 			want: "",
 		},
@@ -373,7 +373,7 @@ func TestAppConfig_Safe(t *testing.T) {
 		want AppConfig
 	}{
 		{
-			name: "Строка подключения к базе маскируется",
+			name: "строка подключения к базе маскируется",
 			c: AppConfig{
 				DatabaseURI:          "postgresql://gomartuser:REALPASS@postgres/gomartdb?sslmode=disable",
 				AccrualSystemAddress: ":8081",
