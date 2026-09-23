@@ -71,6 +71,7 @@ func run() int {
 	}
 
 	accrualClient := accrualclient.NewHTTPClient(
+		appCtx,
 		cfg.AccrualSystemAddress,
 		5*time.Second,
 		1,
@@ -128,6 +129,8 @@ func run() int {
 
 	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer shutdownCancel()
+
+	appCancel()
 	orderPool.Stop(shutdownCtx)
 	if err := srv.Stop(shutdownCtx); err != nil {
 		log.Error("failed to stop server", "error", err)

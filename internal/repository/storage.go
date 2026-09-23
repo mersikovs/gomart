@@ -36,10 +36,10 @@ type Storage interface {
 	// action фильтрует выборку: начисление, списание.
 	GetOrdersByUser(ctx context.Context, id int64, action model.ActionType) ([]model.Order, error)
 
-	// GetOrdersByStatus возвращает список всех заказов системы с заданным статусом.
-	// status фильтрует выборку по статусу.
-	// action фильтрует выборку: начисление, списание.
-	GetOrdersByStatus(ctx context.Context, status string, action model.ActionType) ([]model.Order, error)
+	// GetOrdersByStatus возвращает список всех заказов системы в требующих дальнейшей обработки.
+	// Статусы NEW, PROCESSING
+	// Action EARN
+	GetOrdersAwaitingUpdate(ctx context.Context) ([]model.Order, error)
 
 	// FindUserByID ищет пользователя по его внутреннему числовому идентификатору.
 	FindUserByID(ctx context.Context, id int64) (*model.User, error)

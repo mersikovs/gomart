@@ -84,6 +84,16 @@ func (s *orderService) RegisterOrder(ctx context.Context, userID int64, orderNum
 
 	_, err = s.repo.CreateOrder(ctx, userID, orderNumber)
 	if err != nil {
+		if errors.Is(err, repository.ErrOrderAlreadyExists) {
+			existing, existingError := s.repo.GetOrderByNumber(ctx, orderNumber)
+			if existingError != nil {
+				return status, fmt.Errorf("get order after conflict: %w", existingError)
+			}
+			if existing.UserID == userID {
+				return OrderStatusAlreadyAdded, nil
+			}
+			return status, ErrOrderAlreadyProcessedByOther
+		}
 		return status, fmt.Errorf("error CreateOrder: %w", err)
 	}
 

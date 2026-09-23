@@ -26,13 +26,13 @@ func (h *API) RegisterOrder(w http.ResponseWriter, r *http.Request) {
 
 	claims := middleware.GetClaimsFromContext(r.Context())
 	if claims == nil {
-		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		http.Error(w, http.StatusText(http.StatusUnauthorized), http.StatusUnauthorized)
 		return
 	}
 
 	userID, ok := claims["userID"].(float64)
 	if !ok {
-		http.Error(w, "invalid token claims", http.StatusUnauthorized)
+		http.Error(w, http.StatusText(http.StatusUnauthorized), http.StatusUnauthorized)
 		return
 	}
 
@@ -47,8 +47,8 @@ func (h *API) RegisterOrder(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusConflict)
 			return
 		}
-		h.logger.Debug("registerOrder error", "error", err)
-		http.Error(w, "registerOrder error", http.StatusInternalServerError)
+		h.logger.Error("registerOrder error", "error", err)
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 		return
 	}
 
@@ -81,20 +81,20 @@ type OrderResponse struct {
 func (h *API) ListOrders(w http.ResponseWriter, r *http.Request) {
 	claims := middleware.GetClaimsFromContext(r.Context())
 	if claims == nil {
-		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		http.Error(w, http.StatusText(http.StatusUnauthorized), http.StatusUnauthorized)
 		return
 	}
 
 	userID, ok := claims["userID"].(float64)
 	if !ok {
-		http.Error(w, "invalid token claims", http.StatusUnauthorized)
+		http.Error(w, http.StatusText(http.StatusUnauthorized), http.StatusUnauthorized)
 		return
 	}
 
 	list, err := h.orderService.OrderList(r.Context(), int64(userID))
 	if err != nil {
-		h.logger.Debug("error OrderList", "error", err)
-		http.Error(w, "error OrderList", http.StatusInternalServerError)
+		h.logger.Error("error OrderList", "error", err)
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 		return
 	}
 

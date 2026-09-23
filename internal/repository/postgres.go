@@ -112,16 +112,20 @@ func (s *PgStorage) CreateWithdraw(ctx context.Context, userID int64, orderNumbe
 		}
 	}()
 
+	var balance int64
+	queryGetCurrentBalance := `SELECT current_balance FROM users WHERE id = $1 FOR UPDATE`
+	err = tx.QueryRow(ctx, queryGetCurrentBalance, userID).Scan(&balance)
+	if err != nil {
+		return nil, fmt.Errorf("user not found: %w", err)
+	}
+
+	if balance < int64(sum) {
+		return nil, ErrInsufficientFunds
+	}
+
 	queryDeduct := "UPDATE users SET current_balance = current_balance - $1, total_spent = total_spent + $1 WHERE id = $2"
 	queryDeductResult, err := tx.Exec(ctx, queryDeduct, sum, userID)
 	if err != nil {
-		var pgErr *pgconn.PgError
-		if errors.As(err, &pgErr) {
-			if pgErr.Code == "23514" || pgErr.Code == "22003" {
-				return nil, ErrInsufficientFunds
-			}
-		}
-
 		return nil, fmt.Errorf("failed to deduct funds: %w", err)
 	}
 
@@ -229,7 +233,7 @@ func (s *PgStorage) GetOrderByNumber(ctx context.Context, orderNumber string) (*
 // GetOrdersByUser возвращает список заказов конкретного пользователя id.
 // action фильтрует выборку: начисление, списание.
 func (s *PgStorage) GetOrdersByUser(ctx context.Context, userID int64, action model.ActionType) ([]model.Order, error) {
-	query := `SELECT id, user_id, number, status, action, points, created_at FROM orders o WHERE user_id = $1 and action = $2`
+	query := `SELECT id, user_id, number, status, action, points, created_at FROM orders o WHERE user_id = $1 and action = $2 ORDER BY created_at DESC`
 	rows, err := s.pool.Query(ctx, query, userID, action)
 	if err != nil {
 		return nil, fmt.Errorf("error Query GetOrdersByUser: %w", err)
@@ -245,12 +249,10 @@ func (s *PgStorage) GetOrdersByUser(ctx context.Context, userID int64, action mo
 	return orders, nil
 }
 
-// GetOrdersByStatus возвращает список всех заказов системы с заданным статусом.
-// status фильтрует выборку по статусу.
-// action фильтрует выборку: начисление, списание.
-func (s *PgStorage) GetOrdersByStatus(ctx context.Context, status string, action model.ActionType) ([]model.Order, error) {
-	query := `SELECT id, user_id, number, status, action, points, created_at FROM orders o WHERE status = $1 AND action = $2`
-	rows, err := s.pool.Query(ctx, query, status, action)
+// GetOrdersByStatus возвращает список всех заказов системы доступных для обновления по статусу.
+func (s *PgStorage) GetOrdersAwaitingUpdate(ctx context.Context) ([]model.Order, error) {
+	query := `SELECT id, user_id, number, status, action, points, created_at FROM orders o WHERE status IN ($1, $2) AND action = $3 ORDER BY created_at ASC`
+	rows, err := s.pool.Query(ctx, query, model.OrderStatusNew, model.OrderStatusProcessing, model.ActionEarn)
 	if err != nil {
 		return nil, fmt.Errorf("error Query GetOrdersByStatus: %w", err)
 	}

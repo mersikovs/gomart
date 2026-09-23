@@ -10,10 +10,10 @@ type ActionType string
 
 const (
 	// ActionEarn обозначает номер заказа пришел и записан в режиме начисления
-	ActionEarn ActionType = "earn"
+	ActionEarn ActionType = "EARN"
 
 	// ActionSpend обозначает номер заказа пришел и записан в режиме списания
-	ActionSpend ActionType = "spend"
+	ActionSpend ActionType = "SPEND"
 )
 
 // OrderStatus представляет собой жизненный цикл заказа в системе начислений.

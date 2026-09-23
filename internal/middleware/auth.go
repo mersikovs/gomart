@@ -27,13 +27,13 @@ func Auth(cfg AuthConfig) func(http.Handler) http.Handler {
 
 			authHeader := r.Header.Get("Authorization")
 			if authHeader == "" {
-				http.Error(w, "authorization header is required", http.StatusUnauthorized)
+				http.Error(w, http.StatusText(http.StatusUnauthorized), http.StatusUnauthorized)
 				return
 			}
 
 			tokenString := strings.TrimPrefix(authHeader, "Bearer ")
 			if tokenString == authHeader {
-				http.Error(w, "invalid authorization format", http.StatusUnauthorized)
+				http.Error(w, http.StatusText(http.StatusUnauthorized), http.StatusUnauthorized)
 				return
 			}
 
@@ -46,7 +46,7 @@ func Auth(cfg AuthConfig) func(http.Handler) http.Handler {
 			})
 
 			if err != nil || !token.Valid {
-				http.Error(w, "invalid or expired token", http.StatusUnauthorized)
+				http.Error(w, http.StatusText(http.StatusUnauthorized), http.StatusUnauthorized)
 				return
 			}
 

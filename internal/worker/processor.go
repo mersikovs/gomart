@@ -55,7 +55,7 @@ func (p *OrderProcessor) Run(ctx context.Context) {
 }
 
 func (p *OrderProcessor) loadPendingOrders(ctx context.Context) {
-	orders, err := p.repo.GetOrdersByStatus(ctx, "NEW", model.ActionEarn)
+	orders, err := p.repo.GetOrdersAwaitingUpdate(ctx)
 	if err != nil {
 		slog.Error("Failed to get pending orders", "error", err)
 		return

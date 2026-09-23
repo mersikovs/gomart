@@ -42,20 +42,20 @@ func (h *API) RegisterWithdraw(w http.ResponseWriter, r *http.Request) {
 	var withdrawVars RegisterWithdrawRequest
 
 	if err := json.NewDecoder(r.Body).Decode(&withdrawVars); err != nil {
-		h.logger.Debug("invalid withdraw request body", "error", err)
+		h.logger.Error("invalid withdraw request body", "error", err)
 		http.Error(w, "invalid request body", http.StatusBadRequest)
 		return
 	}
 
 	claims := middleware.GetClaimsFromContext(r.Context())
 	if claims == nil {
-		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		http.Error(w, http.StatusText(http.StatusUnauthorized), http.StatusUnauthorized)
 		return
 	}
 
 	userID, ok := claims["userID"].(float64)
 	if !ok {
-		http.Error(w, "invalid token claims", http.StatusUnauthorized)
+		http.Error(w, http.StatusText(http.StatusUnauthorized), http.StatusUnauthorized)
 		return
 	}
 
@@ -78,8 +78,8 @@ func (h *API) RegisterWithdraw(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusPaymentRequired)
 			return
 		}
-		h.logger.Debug("registerWithdraw", "error", err)
-		http.Error(w, "registerWithdraw error", http.StatusInternalServerError)
+		h.logger.Error("registerWithdraw", "error", err)
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 		return
 	}
 
@@ -98,20 +98,20 @@ func (h *API) RegisterWithdraw(w http.ResponseWriter, r *http.Request) {
 func (h *API) ListWithdraws(w http.ResponseWriter, r *http.Request) {
 	claims := middleware.GetClaimsFromContext(r.Context())
 	if claims == nil {
-		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		http.Error(w, http.StatusText(http.StatusUnauthorized), http.StatusUnauthorized)
 		return
 	}
 
 	userID, ok := claims["userID"].(float64)
 	if !ok {
-		http.Error(w, "invalid token claims", http.StatusUnauthorized)
+		http.Error(w, http.StatusText(http.StatusUnauthorized), http.StatusUnauthorized)
 		return
 	}
 
 	list, err := h.orderService.WithdrawList(r.Context(), int64(userID))
 	if err != nil {
-		h.logger.Debug("error WithdrawList", "error", err)
-		http.Error(w, "error WithdrawList", http.StatusInternalServerError)
+		h.logger.Error("error WithdrawList", "error", err)
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 		return
 	}
 

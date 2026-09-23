@@ -356,7 +356,7 @@ func TestPgStorage_UpdateOrderStatusAndUserBalance(t *testing.T) {
 
 				_, err = pool.Exec(ctx,
 					`INSERT INTO orders(user_id, number, status, action, points) VALUES ($1, $2, $3, $4, $5)`,
-					userID, "79927398713", model.OrderStatusNew, "earn", 0)
+					userID, "79927398713", model.OrderStatusNew, model.ActionEarn, 0)
 				require.NoError(t, err)
 
 				return userID, "79927398713"
@@ -390,7 +390,7 @@ func TestPgStorage_UpdateOrderStatusAndUserBalance(t *testing.T) {
 
 				_, err = pool.Exec(ctx,
 					`INSERT INTO orders(user_id, number, status, action, points) VALUES ($1, $2, $3, $4, $5)`,
-					userID, "5555555555555", model.OrderStatusProcessing, "earn", 0)
+					userID, "5555555555555", model.OrderStatusProcessing, model.ActionEarn, 0)
 				require.NoError(t, err)
 
 				return userID, "5555555555555"
@@ -416,7 +416,7 @@ func TestPgStorage_UpdateOrderStatusAndUserBalance(t *testing.T) {
 
 				_, err = pool.Exec(ctx,
 					`INSERT INTO orders(user_id, number, status, action, points) VALUES ($1, $2, $3, $4, $5)`,
-					userID, "7777777777777", model.OrderStatusNew, "earn", 0)
+					userID, "7777777777777", model.OrderStatusNew, model.ActionEarn, 0)
 				require.NoError(t, err)
 
 				return userID, "7777777777777"
@@ -448,7 +448,7 @@ func TestPgStorage_UpdateOrderStatusAndUserBalance(t *testing.T) {
 
 				_, err = pool.Exec(ctx,
 					`INSERT INTO orders(user_id, number, status, action, points) VALUES ($1, $2, $3, $4, $5)`,
-					userID, "8888888888888", model.OrderStatusProcessed, "earn", 100) // уже финальный
+					userID, "8888888888888", model.OrderStatusProcessed, model.ActionEarn, 100)
 				require.NoError(t, err)
 
 				return userID, "8888888888888"
@@ -524,7 +524,7 @@ func TestPgStorage_GetOrderByNumber(t *testing.T) {
 				require.NoError(t, err)
 
 				_, err = pool.Exec(ctx, `INSERT INTO orders(user_id, number, status, action, points) VALUES ($1, $2, $3, $4, $5)`,
-					userID, "79927398713", "PROCESSED", "earn", 1500)
+					userID, "79927398713", "PROCESSED", model.ActionEarn, 1500)
 				require.NoError(t, err)
 			},
 			orderNum: "79927398713",
@@ -532,7 +532,7 @@ func TestPgStorage_GetOrderByNumber(t *testing.T) {
 
 				Number: "",
 				Status: "PROCESSED",
-				Action: model.ActionType("earn"),
+				Action: model.ActionType(model.ActionEarn),
 				Points: 1500,
 			},
 			wantErr: nil,
@@ -546,7 +546,7 @@ func TestPgStorage_GetOrderByNumber(t *testing.T) {
 				require.NoError(t, err)
 
 				_, err = pool.Exec(ctx, `INSERT INTO orders(user_id, number, status, action, points) VALUES ($1, $2, $3, $4, $5)`,
-					userID, "1111111111111", "NEW", "earn", 100)
+					userID, "1111111111111", "NEW", model.ActionEarn, 100)
 				require.NoError(t, err)
 			},
 			orderNum: "9999999999999", // Несуществующий номер
@@ -682,7 +682,7 @@ func TestPgStorage_GetOrdersByUser(t *testing.T) {
 			seed: func(t *testing.T) (int64, []model.Order) {
 				id := seedUser(t, ctx, s.pool, "alice", "hash", 0, 0)
 				_ = seedOrders(t, ctx, s.pool, id, fixedTime, []orderSeed{
-					{Number: "111", Status: "PROCESSED", Action: "spend", Points: 100},
+					{Number: "111", Status: "PROCESSED", Action: "SPEND", Points: 100},
 				})
 				return id, []model.Order{}
 			},
@@ -735,19 +735,17 @@ func TestPgStorage_GetOrdersByStatus(t *testing.T) {
 
 				_, err = s.pool.Exec(ctx,
 					`INSERT INTO orders(user_id, number, status, action, points, created_at) VALUES
-                        ($2, '111', 'PROCESSED', 'earn', 100, $1),
-                        ($2, '222', 'PROCESSED', 'earn', 200, $1),
-                        ($2, '333', 'NEW',       'earn', 300, $1),
-                        ($2, '444', 'PROCESSED', 'spend', 400, $1)`,
+                        ($2, '111', 'PROCESSED', 'EARN', 100, $1),
+                        ($2, '222', 'PROCESSING', 'EARN', 200, $1),
+                        ($2, '333', 'NEW',       'EARN', 300, $1),
+                        ($2, '444', 'PROCESSED', 'SPEND', 400, $1)`,
 					fixedTime, id)
 				require.NoError(t, err)
 
 			},
-			status: "PROCESSED",
-			action: model.ActionType(string(model.ActionEarn)),
 			want: []model.Order{
-				{Number: "111", Status: "PROCESSED", Action: model.ActionType(string(model.ActionEarn)), Points: 100, CreatedAt: fixedTime},
-				{Number: "222", Status: "PROCESSED", Action: model.ActionType(string(model.ActionEarn)), Points: 200, CreatedAt: fixedTime},
+				{Number: "222", Status: "PROCESSING", Action: model.ActionEarn, Points: 200, CreatedAt: fixedTime},
+				{Number: "333", Status: "NEW", Action: model.ActionEarn, Points: 300, CreatedAt: fixedTime},
 			},
 		},
 		{
@@ -761,20 +759,16 @@ func TestPgStorage_GetOrdersByStatus(t *testing.T) {
 
 				_, err = s.pool.Exec(ctx,
 					`INSERT INTO orders(user_id, number, status, action, points, created_at) VALUES
-                        ($2, '111', 'NEW', 'earn', 100, $1)`,
+                        ($2, '111', 'PROCESSED', 'EARN', 100, $1)`,
 					fixedTime, id)
 				require.NoError(t, err)
 			},
-			status: "PROCESSED",
-			action: model.ActionType(string(model.ActionEarn)),
-			want:   []model.Order{},
+			want: []model.Order{},
 		},
 		{
-			name:   "пустая таблица — пустой срез без ошибки",
-			seed:   func(t *testing.T) {},
-			status: "PROCESSED",
-			action: model.ActionType(string(model.ActionEarn)),
-			want:   []model.Order{},
+			name: "пустая таблица — пустой срез без ошибки",
+			seed: func(t *testing.T) {},
+			want: []model.Order{},
 		},
 	}
 
@@ -783,12 +777,13 @@ func TestPgStorage_GetOrdersByStatus(t *testing.T) {
 			truncateAll(t, ctx, s.pool)
 			tt.seed(t)
 
-			got, err := s.GetOrdersByStatus(ctx, tt.status, tt.action)
+			got, err := s.GetOrdersAwaitingUpdate(ctx)
 			require.NoError(t, err)
 
 			for i := range got {
 				got[i].ID = 0
 				got[i].UserID = 0
+				got[i].CreatedAt = got[i].CreatedAt.UTC()
 			}
 
 			require.ElementsMatch(t, tt.want, got)

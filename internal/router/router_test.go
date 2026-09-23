@@ -32,7 +32,7 @@ func TestSetup_Routes(t *testing.T) {
 	mockClient := mocks.NewAccrualClient(t)
 
 	mockRepo.
-		On("GetOrdersByUser", mock.Anything, int64(42), model.ActionType("earn")).
+		On("GetOrdersByUser", mock.Anything, int64(42), model.ActionEarn).
 		Return([]model.Order{ /* ... */ }, nil).
 		Once()
 

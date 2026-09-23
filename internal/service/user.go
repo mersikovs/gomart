@@ -55,15 +55,6 @@ func NewUserService(repo repository.Storage, secret string, bCost int) UserServi
 }
 
 func (s *userService) Register(ctx context.Context, login, password string) (string, error) {
-	_, err := s.repo.FindUserByLogin(ctx, login)
-	switch {
-	case err == nil:
-		return "", ErrUserAlreadyExists
-	case errors.Is(err, repository.ErrUserNotFound):
-	default:
-		return "", fmt.Errorf("register: find user by login: %w", err)
-	}
-
 	cost := bcrypt.DefaultCost
 	if s.bcryptCost > 0 {
 		cost = s.bcryptCost

@@ -39,11 +39,11 @@ func (h *API) Login(w http.ResponseWriter, r *http.Request) {
 	token, err := h.userService.Login(r.Context(), loginVars.Login, loginVars.Password)
 	if err != nil {
 		if errors.Is(err, service.ErrInvalidCredentials) {
-			http.Error(w, "invalid credentials", http.StatusUnauthorized) // 401
+			http.Error(w, http.StatusText(http.StatusUnauthorized), http.StatusUnauthorized)
 			return
 		}
-		h.logger.Debug("login failed", "error", err)
-		http.Error(w, "internal error", http.StatusInternalServerError)
+		h.logger.Error("login failed", "error", err)
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 		return
 	}
 

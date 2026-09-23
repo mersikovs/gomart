@@ -20,20 +20,20 @@ type BalanceResponse struct {
 func (h *API) GetBalance(w http.ResponseWriter, r *http.Request) {
 	claims := middleware.GetClaimsFromContext(r.Context())
 	if claims == nil {
-		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		http.Error(w, http.StatusText(http.StatusUnauthorized), http.StatusUnauthorized)
 		return
 	}
 
 	userID, ok := claims["userID"].(float64)
 	if !ok {
-		http.Error(w, "invalid token claims", http.StatusUnauthorized)
+		http.Error(w, http.StatusText(http.StatusUnauthorized), http.StatusUnauthorized)
 		return
 	}
 
 	user, err := h.userService.GetBalance(r.Context(), int64(userID))
 	if err != nil {
-		h.logger.Debug("error GetBalance", "error", err)
-		http.Error(w, "error GetBalance", http.StatusInternalServerError)
+		h.logger.Error("error GetBalance", "error", err)
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 		return
 	}
 

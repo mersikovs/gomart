@@ -85,7 +85,7 @@ func getEnvOrArg(env EnvSource, envKey, cliArg string) string {
 func (c *AppConfig) validate() error {
 
 	if c.DatabaseURI == "" {
-		return fmt.Errorf("env %s or flag --d  is required", c.DatabaseURI)
+		return fmt.Errorf("env %s or flag --d  is required", databaseURI)
 	}
 	if c.AccrualSystemAddress == "" {
 		return fmt.Errorf("env %s or flag --r is required", accrualSystemAddress)

@@ -44,7 +44,7 @@ func (h *API) Register(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "user already exists", http.StatusConflict) // 409
 			return
 		}
-		http.Error(w, "internal server error", http.StatusInternalServerError)
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 		return
 	}
 
