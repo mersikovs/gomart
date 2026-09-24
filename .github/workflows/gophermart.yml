@@ -14,6 +14,9 @@ jobs:
     runs-on: ubuntu-latest
     container: golang:1.26
 
+    env:
+      JWTSECRET: ${{ secrets.JWTSECRET }}
+
     services:
       postgres:
         image: postgres
