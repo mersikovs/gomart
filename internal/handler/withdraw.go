@@ -42,7 +42,6 @@ func (h *API) RegisterWithdraw(w http.ResponseWriter, r *http.Request) {
 	var withdrawVars RegisterWithdrawRequest
 
 	if err := json.NewDecoder(r.Body).Decode(&withdrawVars); err != nil {
-		h.logger.Error("invalid withdraw request body", "error", err)
 		http.Error(w, "invalid request body", http.StatusBadRequest)
 		return
 	}

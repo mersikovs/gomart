@@ -20,7 +20,7 @@ import (
 
 const (
 	defaultRetryDelay            = 1 * time.Second
-	maxRetryDelay                = 1 * time.Second
+	maxRetryDelay                = 5 * time.Minute
 	maxLimit          rate.Limit = 10.0
 	speedUpFactor     rate.Limit = 1.1
 	slowDownFactor    rate.Limit = 2.0
@@ -91,6 +91,8 @@ func NewHTTPClient(ctx context.Context, baseURL string, timeout time.Duration, i
 		}
 
 		switch resp.StatusCode {
+		case http.StatusInternalServerError: // 500
+			return true, nil
 		case http.StatusServiceUnavailable: // 503
 			return true, nil
 		case http.StatusBadGateway: // 502

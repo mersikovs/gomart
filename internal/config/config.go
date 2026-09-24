@@ -58,8 +58,8 @@ func Load(fs *flag.FlagSet, args []string, env EnvSource) (*AppConfig, error) {
 	cfg.DatabaseURI = getEnvOrArg(env, databaseURI, cfg.DatabaseURI)
 	cfg.RunAddress = getEnvOrArg(env, runAddress, cfg.RunAddress)
 
-	// значения по умолчанию для автотестов
-	cfg.JWTSecret = getEnvOrArg(env, JWTSecret, "DefaultSecret")
+	cfg.JWTSecret, _ = env.LookupEnv(JWTSecret)
+
 	bcryptCost, find := env.LookupEnv(BcryptCost)
 	if find {
 		cost, err := strconv.Atoi(bcryptCost)
@@ -89,6 +89,13 @@ func (c *AppConfig) validate() error {
 	}
 	if c.AccrualSystemAddress == "" {
 		return fmt.Errorf("env %s or flag --r is required", accrualSystemAddress)
+	}
+	if c.JWTSecret == "" {
+		return fmt.Errorf("env %s  is required", JWTSecret)
+	}
+
+	if len(c.JWTSecret) < 32 {
+		return fmt.Errorf("env %s must be at least 32 bytes long for security reasons", JWTSecret)
 	}
 
 	return nil
